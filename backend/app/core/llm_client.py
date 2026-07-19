@@ -1,5 +1,9 @@
 """
-Thin wrapper around the Anthropic API.
+Thin wrapper around the Groq API (OpenAI-compatible chat completions).
+
+Switched from Anthropic to Groq for the 8-day demo scope — free tier and
+fast API key access, versus Anthropic's billing-gated key setup, mattered
+more than model choice at this stage. See ADR log for the full reasoning.
 
 Kept deliberately minimal per AI Architecture doc Section 7.2 (few-shot
 prompting, not fine-tuning) — this is not a general-purpose LLM gateway,
@@ -8,23 +12,25 @@ prompt + user content, get back raw text, let the caller parse/validate it.
 
 Isolating this in one module also means Touchpoint 3 (sentiment scoring,
 per AI Architecture Section 7.6) can later swap in a cheaper model here
-without touching the Extraction Service's logic at all.
+without touching the Extraction Service's logic at all — and means
+swapping providers again later (back to Anthropic/OpenAI, or a different
+Groq model) only touches this one file.
 """
 
 import json
 from typing import Any
 
-import anthropic
+from groq import Groq
 
 from app.core.config import get_settings
 
 
 class LLMClient:
-    """Wraps the Anthropic Messages API for structured-output calls."""
+    """Wraps Groq's OpenAI-compatible chat completions API for structured-output calls."""
 
     def __init__(self) -> None:
         settings = get_settings()
-        self._client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+        self._client = Groq(api_key=settings.groq_api_key)
         self._model = settings.llm_model
         self._max_tokens = settings.extraction_max_tokens
         self._temperature = settings.extraction_temperature
@@ -38,15 +44,18 @@ class LLMClient:
         malformed output is rejected here rather than passed further down
         the pipeline.
         """
-        response = self._client.messages.create(
+        response = self._client.chat.completions.create(
             model=self._model,
             max_tokens=self._max_tokens,
             temperature=self._temperature,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_content}],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_content},
+            ],
+            response_format={"type": "json_object"},
         )
 
-        raw_text = response.content[0].text.strip()
+        raw_text = response.choices[0].message.content.strip()
 
         # Models occasionally wrap JSON in markdown code fences despite
         # instructions not to — strip defensively rather than fail on it.
