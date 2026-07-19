@@ -1,47 +1,65 @@
 {
-  "_comment": "PLACEHOLDER test set. Per Execution Plan Weeks 1-2, replace this with 100-150 real labeled examples from actual student email/Slack samples before measuring real precision/recall. This file only demonstrates the expected shape.",
+  "_comment": "Curated representative test set (realistic student scenarios), not pulled from a real inbox due to time constraints ahead of the demo. Covers made-by-me, made-to-me, conditional, vague, and negative cases. Replace with genuine inbox data post-demo for a truly reliable precision number.",
   "examples": [
     {
-      "message": "I'll get you the assignment feedback by tomorrow morning, sorry for the delay.",
-      "expected": {
-        "is_commitment": true,
-        "commitment_type": "made-by-me"
-      }
+      "message": "Dear All, Greetings of the Day! The students who are willing to go for the Outing on 17.07.2026 should fill out the link below and submit it. An Approved/Not Approved email will be sent to all students on Thursday. Kindly fill out the Microsoft outgoing Permission Form on Time.",
+      "expected": { "is_commitment": false, "commitment_type": null }
     },
     {
-      "message": "Thanks for the update, noted.",
-      "expected": {
-        "is_commitment": false,
-        "commitment_type": null
-      }
+      "message": "Dear Students, The School of Technology has launched the Acceleration Track 2026-27. Students of 3rd-year B.Tech are invited to register by filling out the registration form. Last date to complete the registration: 9th July 2026.",
+      "expected": { "is_commitment": false, "commitment_type": null }
+    },
+    {
+      "message": "Hey, I'll send you my part of the ppt tonight before 9, promise.",
+      "expected": { "is_commitment": true, "commitment_type": "made-by-me" }
+    },
+    {
+      "message": "I'll submit the internship report by Friday evening, just finishing the last section.",
+      "expected": { "is_commitment": true, "commitment_type": "made-by-me" }
+    },
+    {
+      "message": "Sure, I'll loop in the placement cell and get back to you with the exact interview date.",
+      "expected": { "is_commitment": true, "commitment_type": "made-by-me" }
+    },
+    {
+      "message": "Sir said he'll upload the corrected assignment scores by tomorrow.",
+      "expected": { "is_commitment": true, "commitment_type": "made-to-me" }
+    },
+    {
+      "message": "The recruiter mentioned she'd send the offer letter once HR finishes verification.",
+      "expected": { "is_commitment": true, "commitment_type": "made-to-me" }
+    },
+    {
+      "message": "My teammate said he'd handle the deployment part and ping me once it's live.",
+      "expected": { "is_commitment": true, "commitment_type": "made-to-me" }
     },
     {
       "message": "Once I hear back from the placement cell, I'll forward the interview slot to you.",
-      "expected": {
-        "is_commitment": true,
-        "commitment_type": "conditional"
-      }
+      "expected": { "is_commitment": true, "commitment_type": "conditional" }
     },
     {
-      "message": "Professor said she'll share the corrected grades sometime this week.",
-      "expected": {
-        "is_commitment": true,
-        "commitment_type": "made-to-me"
-      }
+      "message": "If the professor approves the extension, I'll share the revised submission link with everyone.",
+      "expected": { "is_commitment": true, "commitment_type": "conditional" }
     },
     {
       "message": "We should catch up sometime after finals.",
-      "expected": {
-        "is_commitment": true,
-        "commitment_type": "vague"
-      }
+      "expected": { "is_commitment": true, "commitment_type": "vague" }
+    },
+    {
+      "message": "I'll try to look into it whenever I get some free time this week.",
+      "expected": { "is_commitment": true, "commitment_type": "vague" }
+    },
+    {
+      "message": "Thanks for the update, noted.",
+      "expected": { "is_commitment": false, "commitment_type": null }
     },
     {
       "message": "The meeting has been moved to 4 PM in the same room.",
-      "expected": {
-        "is_commitment": false,
-        "commitment_type": null
-      }
+      "expected": { "is_commitment": false, "commitment_type": null }
+    },
+    {
+      "message": "Congrats on the results, well deserved!",
+      "expected": { "is_commitment": false, "commitment_type": null }
     }
   ]
 }
