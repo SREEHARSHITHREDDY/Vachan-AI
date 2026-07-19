@@ -1,0 +1,47 @@
+{
+  "_comment": "PLACEHOLDER test set. Per Execution Plan Weeks 1-2, replace this with 100-150 real labeled examples from actual student email/Slack samples before measuring real precision/recall. This file only demonstrates the expected shape.",
+  "examples": [
+    {
+      "message": "I'll get you the assignment feedback by tomorrow morning, sorry for the delay.",
+      "expected": {
+        "is_commitment": true,
+        "commitment_type": "made-by-me"
+      }
+    },
+    {
+      "message": "Thanks for the update, noted.",
+      "expected": {
+        "is_commitment": false,
+        "commitment_type": null
+      }
+    },
+    {
+      "message": "Once I hear back from the placement cell, I'll forward the interview slot to you.",
+      "expected": {
+        "is_commitment": true,
+        "commitment_type": "conditional"
+      }
+    },
+    {
+      "message": "Professor said she'll share the corrected grades sometime this week.",
+      "expected": {
+        "is_commitment": true,
+        "commitment_type": "made-to-me"
+      }
+    },
+    {
+      "message": "We should catch up sometime after finals.",
+      "expected": {
+        "is_commitment": true,
+        "commitment_type": "vague"
+      }
+    },
+    {
+      "message": "The meeting has been moved to 4 PM in the same room.",
+      "expected": {
+        "is_commitment": false,
+        "commitment_type": null
+      }
+    }
+  ]
+}
