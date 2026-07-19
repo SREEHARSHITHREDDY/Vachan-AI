@@ -30,7 +30,12 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./vachanai_demo.db"
 
     # Extraction tuning
-    extraction_max_tokens: int = 500
+    # max_tokens raised from 500 -> 2000: openai/gpt-oss-120b is a reasoning
+    # model (produces internal chain-of-thought before the final answer),
+    # and 500 tokens may be fully consumed by reasoning before any JSON is
+    # emitted, producing an empty completion (observed: groq.BadRequestError,
+    # "Failed to validate JSON" with an empty failed_generation).
+    extraction_max_tokens: int = 2000
     extraction_temperature: float = 0.0  # deterministic classification, not creative generation
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
