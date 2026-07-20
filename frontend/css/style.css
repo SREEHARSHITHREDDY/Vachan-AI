@@ -1,0 +1,241 @@
+/*
+  Main layout + components. Theme-agnostic — every color here reads from
+  the CSS variables defined in theme.css, so this file never needs to
+  change when dark/light mode toggles.
+*/
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  overflow-x: hidden;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+#bgCanvas {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  opacity: var(--bg-canvas-opacity);
+  transition: opacity 0.25s ease;
+}
+
+/* ---------- Layout: sidebar + main content ---------- */
+
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 220px;
+  flex-shrink: 0;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--card-border);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+}
+
+.sidebar-brand {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  margin-bottom: 4px;
+  padding: 0 8px;
+}
+.sidebar-brand span { color: var(--accent); text-shadow: 0 0 20px var(--accent-glow); }
+.sidebar-subtitle {
+  color: var(--muted);
+  font-size: 11px;
+  padding: 0 8px;
+  margin-bottom: 28px;
+}
+
+.nav-list { list-style: none; padding: 0; margin: 0; flex: 1; }
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  color: var(--muted);
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+}
+.nav-item:hover { background: var(--card-bg); color: var(--text); }
+.nav-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 600; }
+.nav-item .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+.nav-item .soon-badge {
+  margin-left: auto;
+  font-size: 9px;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: var(--card-border);
+  padding: 2px 6px;
+  border-radius: 8px;
+}
+
+.theme-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.main-content {
+  flex: 1;
+  padding: 32px 40px 80px;
+  max-width: 760px;
+}
+
+.view { display: none; }
+.view.active { display: block; }
+
+/* ---------- Components (cards, forms, badges — unchanged look) ---------- */
+
+.error-banner {
+  background: rgba(240,87,87,0.12);
+  border: 1px solid rgba(240,87,87,0.3);
+  color: var(--error);
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  margin-bottom: 20px;
+  display: none;
+}
+.error-banner.show { display: block; }
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 18px;
+  padding: 22px;
+  margin-bottom: 20px;
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 var(--card-highlight);
+}
+
+.digest-row { display: flex; gap: 14px; }
+.digest-stat { flex: 1; text-align: center; }
+.digest-stat .num { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.digest-stat .label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.digest-stat.at-risk .num { color: var(--at-risk); }
+.digest-stat.pending .num { color: var(--muted); }
+.digest-stat.fulfilled .num { color: var(--fulfilled); }
+
+textarea {
+  width: 100%;
+  min-height: 70px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  color: var(--text);
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+button.primary {
+  margin-top: 10px;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, white));
+  color: #0a0b0f;
+  border: none;
+  border-radius: 12px;
+  padding: 11px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--accent-glow);
+}
+button.primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+.result-banner {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.result-banner.extracted { background: rgba(124,158,255,0.12); border: 1px solid rgba(124,158,255,0.3); }
+.result-banner.resolved { background: rgba(95,210,141,0.12); border: 1px solid rgba(95,210,141,0.3); }
+.result-banner.none { background: var(--card-bg); border: 1px solid var(--card-border); color: var(--muted); }
+
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+
+.commitment-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--card-border);
+}
+.commitment-item:last-child { border-bottom: none; }
+.commitment-desc { font-size: 14px; }
+.commitment-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 20px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.badge.pending { color: var(--pending); background: rgba(154,161,172,0.14); }
+.badge.pending::before { background: var(--pending); }
+.badge.at-risk { color: var(--at-risk); background: rgba(240,168,87,0.14); }
+.badge.at-risk::before { background: var(--at-risk); }
+.badge.fulfilled { color: var(--fulfilled); background: rgba(95,210,141,0.14); }
+.badge.fulfilled::before { background: var(--fulfilled); }
+
+.empty-state { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 0; }
+
+.coming-soon {
+  color: var(--muted);
+  font-size: 14px;
+  text-align: center;
+  padding: 60px 20px;
+}
+.coming-soon strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 16px; }
+
+/* ---------- Responsive: collapse sidebar to icons-only on narrow screens ---------- */
+@media (max-width: 720px) {
+  .sidebar { width: 64px; padding: 20px 8px; }
+  .sidebar-brand, .sidebar-subtitle, .nav-item span.label, .theme-toggle span.label { display: none; }
+  .nav-item { justify-content: center; }
+  .main-content { padding: 24px 16px 60px; }
+}

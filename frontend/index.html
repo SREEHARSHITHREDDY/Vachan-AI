@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VachanAI — Demo</title>
+<link rel="stylesheet" href="css/theme.css" />
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<canvas id="bgCanvas"></canvas>
+
+<div class="app-shell">
+
+  <!-- Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-brand">Vachan<span>AI</span></div>
+    <div class="sidebar-subtitle">Commitment &amp; Relationship Intelligence</div>
+
+    <ul class="nav-list">
+      <li class="nav-item active" data-view="digest">
+        <span class="nav-icon">📋</span><span class="label">Digest</span>
+      </li>
+      <li class="nav-item" data-view="commitments">
+        <span class="nav-icon">✅</span><span class="label">Commitments</span>
+      </li>
+      <li class="nav-item" data-view="contacts">
+        <span class="nav-icon">👥</span><span class="label">Contacts</span><span class="soon-badge">Soon</span>
+      </li>
+      <li class="nav-item" data-view="actions">
+        <span class="nav-icon">📅</span><span class="label">Actions</span><span class="soon-badge">Soon</span>
+      </li>
+      <li class="nav-item" data-view="settings">
+        <span class="nav-icon">⚙️</span><span class="label">Settings</span><span class="soon-badge">Soon</span>
+      </li>
+    </ul>
+
+    <div class="theme-toggle" id="themeToggle">
+      <span><span id="themeIcon">🌙</span> <span class="label" id="themeLabel">Dark Mode</span></span>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main class="main-content">
+
+    <div id="errorBanner" class="error-banner"></div>
+
+    <!-- Digest view -->
+    <section id="view-digest" class="view active">
+      <div class="card" data-animate>
+        <div class="section-title">Today's Digest</div>
+        <div class="digest-row">
+          <div class="digest-stat at-risk">
+            <div class="num" id="atRiskCount">0</div>
+            <div class="label">At Risk</div>
+          </div>
+          <div class="digest-stat pending">
+            <div class="num" id="pendingCount">0</div>
+            <div class="label">Pending</div>
+          </div>
+          <div class="digest-stat fulfilled">
+            <div class="num" id="fulfilledCount">0</div>
+            <div class="label">Fulfilled</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">Submit a Message</div>
+        <textarea id="messageInput" placeholder="e.g. I'll send you the report by Friday."></textarea>
+        <br>
+        <button class="primary" id="submitBtn">Process Message</button>
+        <div id="resultBanner" class="result-banner" style="display:none;"></div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">Needs Attention</div>
+        <div id="digestRecentList"></div>
+      </div>
+    </section>
+
+    <!-- Commitments view -->
+    <section id="view-commitments" class="view">
+      <div class="card" data-animate>
+        <div class="section-title">All Commitments</div>
+        <div id="commitmentsList"></div>
+      </div>
+    </section>
+
+    <!-- Coming-soon views — real nav items, honest about scope -->
+    <section id="view-contacts" class="view">
+      <div class="card">
+        <div class="coming-soon">
+          <strong>Contacts &amp; Relationship Scoring</strong>
+          Planned for Phase 2 — see docs/06_AI_Architecture.md for the relationship decay scoring design.
+        </div>
+      </div>
+    </section>
+
+    <section id="view-actions" class="view">
+      <div class="card">
+        <div class="coming-soon">
+          <strong>Calendar Actions</strong>
+          Planned for a later stage — confirmation-gated calendar/reminder integration.
+        </div>
+      </div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <div class="card">
+        <div class="coming-soon">
+          <strong>Settings</strong>
+          Persona mode, connected accounts, and contact importance weights — planned for Phase 2.
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
