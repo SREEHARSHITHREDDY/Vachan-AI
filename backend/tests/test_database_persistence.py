@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from app.models.database import Base
 from app.models.db_models import Commitment, Message, User
@@ -23,8 +24,18 @@ from app.models.db_models import Commitment, Message, User
 
 @pytest.fixture
 def db_session():
+    """
+    StaticPool forces all connections from this engine to share one
+    underlying SQLite connection — required for :memory: databases, which
+    otherwise create a new empty DB per connection. This test suite
+    happened to pass without it (only one session per test), but it's a
+    latent bug that Stage 4's multi-request tests exposed for real —
+    applying the same fix here defensively.
+    """
     """Fresh in-memory SQLite DB per test — no shared state between tests."""
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False})
+    engine = create_engine(
+        "sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
     Base.metadata.create_all(bind=engine)
     TestSessionLocal = sessionmaker(bind=engine)
     session = TestSessionLocal()

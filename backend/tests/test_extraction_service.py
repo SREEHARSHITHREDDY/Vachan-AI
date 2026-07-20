@@ -9,7 +9,7 @@ targeted coverage of the core service, not exhaustive coverage of glue code.
    validation, error handling), not the model's actual classification
    accuracy.
 
-2. A live evaluation test (skipped unless ANTHROPIC_API_KEY is set) that
+2. A live evaluation test (skipped unless GROQ_API_KEY is set) that
    runs the real labeled test set through the real model and reports
    precision — this is the Week 3-5 checkpoint from the Execution Plan
    ("measure precision/recall on the labeled test set").
@@ -19,7 +19,6 @@ Run the live eval too:    pytest tests/test_extraction_service.py --run-live
 """
 
 import json
-import os
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -132,8 +131,10 @@ def test_live_precision_against_labeled_set(request, labeled_examples):
     if not request.config.getoption("--run-live"):
         pytest.skip("Live evaluation skipped — pass --run-live to run it.")
 
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        pytest.skip("ANTHROPIC_API_KEY not set — cannot run live evaluation.")
+    from app.core.config import get_settings
+
+    if not get_settings().groq_api_key:
+        pytest.skip("GROQ_API_KEY not set in .env — cannot run live evaluation.")
 
     service = ExtractionService()  # real LLMClient, real API call
 
