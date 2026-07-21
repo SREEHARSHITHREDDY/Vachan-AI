@@ -382,3 +382,58 @@ button.primary:hover:not(:disabled) { transform: translateY(-1px); }
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ---------- Round 2 Polish: favicon-adjacent brand mark, stat icons, scrollbar, view transitions ---------- */
+
+/* Brand glyph — small logo mark next to the wordmark */
+.brand-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--accent);
+  color: white;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+/* Digest stat icons */
+.stat-icon {
+  font-size: 13px;
+  margin-bottom: 6px;
+  opacity: 0.85;
+}
+.digest-stat.at-risk .stat-icon { color: var(--at-risk); }
+.digest-stat.pending .stat-icon { color: var(--pending); font-size: 8px; }
+.digest-stat.fulfilled .stat-icon { color: var(--fulfilled); }
+
+/* Custom thin scrollbar — a detail most sites skip */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--card-border);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+* { scrollbar-width: thin; scrollbar-color: var(--card-border) transparent; }
+
+/* Smooth view-switch transition instead of an instant snap */
+.view {
+  display: none;
+  opacity: 0;
+}
+.view.active {
+  display: block;
+  animation: view-fade-in 0.25s ease forwards;
+}
+@keyframes view-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .view.active { animation: none; opacity: 1; }
+}
