@@ -1,45 +1,43 @@
 /*
   Theme variables — dark (default) and light, toggled via a
   data-theme="light" attribute on <html>, set/persisted by js/theme.js.
-
-  Defaults to dark unless the user has explicitly chosen light (persisted
-  in localStorage) or their OS preference is light and they've never
-  chosen — see theme.js for the exact precedence logic.
 */
 
 :root,
 :root[data-theme="dark"] {
-  --bg: #0a0b0f;
-  --sidebar-bg: rgba(255, 255, 255, 0.03);
-  --card-bg: rgba(255, 255, 255, 0.055);
-  --card-border: rgba(255, 255, 255, 0.14);
-  --card-highlight: rgba(255, 255, 255, 0.08);
+  --bg: #0d0e12;
+  --bg-gradient: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(124,158,255,0.08), transparent),
+                 radial-gradient(ellipse 60% 40% at 100% 100%, rgba(95,210,141,0.05), transparent);
+  --sidebar-bg: rgba(255, 255, 255, 0.025);
+  --card-bg: rgba(255, 255, 255, 0.04);
+  --card-border: rgba(255, 255, 255, 0.10);
+  --card-highlight: rgba(255, 255, 255, 0.06);
   --text: #eef0f3;
-  --muted: #9aa1ac;
+  --muted: #8b92a0;
   --accent: #7c9eff;
-  --accent-glow: rgba(124, 158, 255, 0.25);
-  --pending: #9aa1ac;
+  --accent-glow: rgba(124, 158, 255, 0.20);
+  --pending: #8b92a0;
   --at-risk: #f0a857;
   --fulfilled: #5fd28d;
   --error: #f08d8d;
-  --bg-canvas-opacity: 0.55;
-  --input-bg: rgba(255, 255, 255, 0.045);
+  --input-bg: rgba(255, 255, 255, 0.03);
 }
 
 :root[data-theme="light"] {
-  --bg: #f4f5f8;
-  --sidebar-bg: rgba(255, 255, 255, 0.55);
-  --card-bg: rgba(255, 255, 255, 0.65);
-  --card-border: rgba(20, 22, 30, 0.10);
-  --card-highlight: rgba(255, 255, 255, 0.9);
+  --bg: #fafafc;
+  --bg-gradient: radial-gradient(ellipse 80% 60% at 50% -10%, rgba(79,111,230,0.06), transparent),
+                 radial-gradient(ellipse 60% 40% at 100% 100%, rgba(47,158,95,0.04), transparent);
+  --sidebar-bg: rgba(255, 255, 255, 0.6);
+  --card-bg: #ffffff;
+  --card-border: rgba(20, 22, 30, 0.08);
+  --card-highlight: rgba(255, 255, 255, 1);
   --text: #1a1d27;
-  --muted: #5c6270;
+  --muted: #6b7280;
   --accent: #4f6fe6;
-  --accent-glow: rgba(79, 111, 230, 0.18);
+  --accent-glow: rgba(79, 111, 230, 0.14);
   --pending: #6b7280;
   --at-risk: #c9791f;
   --fulfilled: #2f9e5f;
   --error: #d64545;
-  --bg-canvas-opacity: 0.22;
-  --input-bg: rgba(20, 22, 30, 0.035);
+  --input-bg: rgba(20, 22, 30, 0.025);
 }

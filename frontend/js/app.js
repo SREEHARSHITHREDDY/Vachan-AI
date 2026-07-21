@@ -15,7 +15,6 @@
 import { getDigest, getCommitments, postMessage } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
-import { initBackground } from "./background.js";
 
 let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
 
@@ -168,9 +167,7 @@ async function init() {
   initTheme();
   wireNav();
 
-  // Decorative layers — each independently wrapped so a failure in one
-  // (or both) can never block the actual application from working.
-  try { await initBackground(); } catch (err) { console.warn("Background failed to load:", err); }
+  // Decorative layer — wrapped so a failure can never block the app.
   try {
     await initAnimations();
     fadeInStagger("[data-animate]");

@@ -42,11 +42,10 @@ export function countUp(el, from, to) {
   if (from === to) { el.textContent = to; return; }
   if (!animate) { el.textContent = to; return; }
   try {
-    const obj = { val: from };
-    animate(obj, { val: to }, {
+    animate(from, to, {
       duration: 0.6,
       easing: "ease-out",
-      onUpdate: (latest) => { el.textContent = Math.round(latest.val); },
+      onUpdate: (latest) => { el.textContent = Math.round(latest); },
     });
   } catch (_) {
     el.textContent = to;

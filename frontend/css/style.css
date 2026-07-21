@@ -1,7 +1,8 @@
 /*
-  Main layout + components. Theme-agnostic — every color here reads from
-  the CSS variables defined in theme.css, so this file never needs to
-  change when dark/light mode toggles.
+  Main layout + components. Deliberately minimal per direct feedback on
+  the previous version: no 3D background, tighter/more consistent
+  spacing, calmer visual hierarchy. Every color reads from theme.css
+  variables so nothing here needs to change when the theme toggles.
 */
 
 * { box-sizing: border-box; }
@@ -10,17 +11,10 @@ body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: var(--bg);
+  background-image: var(--bg-gradient);
+  background-attachment: fixed;
   color: var(--text);
-  overflow-x: hidden;
-  transition: background 0.25s ease, color 0.25s ease;
-}
-
-#bgCanvas {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  opacity: var(--bg-canvas-opacity);
-  transition: opacity 0.25s ease;
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 /* ---------- Layout: sidebar + main content ---------- */
@@ -31,13 +25,11 @@ body {
 }
 
 .sidebar {
-  width: 220px;
+  width: 216px;
   flex-shrink: 0;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--card-border);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  padding: 24px 16px;
+  padding: 28px 14px 20px;
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -46,18 +38,19 @@ body {
 }
 
 .sidebar-brand {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.3px;
-  margin-bottom: 4px;
-  padding: 0 8px;
+  padding: 0 10px;
+  margin-bottom: 3px;
 }
-.sidebar-brand span { color: var(--accent); text-shadow: 0 0 20px var(--accent-glow); }
+.sidebar-brand span { color: var(--accent); }
 .sidebar-subtitle {
   color: var(--muted);
   font-size: 11px;
-  padding: 0 8px;
-  margin-bottom: 28px;
+  line-height: 1.4;
+  padding: 0 10px;
+  margin-bottom: 32px;
 }
 
 .nav-list { list-style: none; padding: 0; margin: 0; flex: 1; }
@@ -65,34 +58,38 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 14px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 9px;
+  font-size: 13.5px;
   color: var(--muted);
   cursor: pointer;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   transition: background 0.15s ease, color 0.15s ease;
   user-select: none;
 }
 .nav-item:hover { background: var(--card-bg); color: var(--text); }
 .nav-item.active { background: var(--accent-glow); color: var(--accent); font-weight: 600; }
-.nav-item .nav-icon { font-size: 16px; width: 18px; text-align: center; }
+.nav-item .nav-icon { font-size: 15px; width: 18px; text-align: center; flex-shrink: 0; }
+.nav-item .label { flex: 1; }
 .nav-item .soon-badge {
-  margin-left: auto;
   font-size: 9px;
   text-transform: uppercase;
+  letter-spacing: 0.3px;
   color: var(--muted);
   background: var(--card-border);
   padding: 2px 6px;
-  border-radius: 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
 .theme-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  border-radius: 10px;
+  gap: 8px;
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 9px;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   font-size: 13px;
@@ -102,23 +99,23 @@ body {
 
 .main-content {
   flex: 1;
-  padding: 32px 40px 80px;
-  max-width: 760px;
+  padding: 36px 44px 80px;
+  max-width: 720px;
 }
 
 .view { display: none; }
 .view.active { display: block; }
 
-/* ---------- Components (cards, forms, badges — unchanged look) ---------- */
+/* ---------- Components ---------- */
 
 .error-banner {
-  background: rgba(240,87,87,0.12);
-  border: 1px solid rgba(240,87,87,0.3);
+  background: rgba(240,87,87,0.10);
+  border: 1px solid rgba(240,87,87,0.25);
   color: var(--error);
-  padding: 12px 14px;
-  border-radius: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
   font-size: 13px;
-  margin-bottom: 20px;
+  margin-bottom: 18px;
   display: none;
 }
 .error-banner.show { display: block; }
@@ -126,69 +123,66 @@ body {
 .card {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
-  border-radius: 18px;
-  padding: 22px;
-  margin-bottom: 20px;
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.12), inset 0 1px 0 var(--card-highlight);
+  border-radius: 14px;
+  padding: 22px 24px;
+  margin-bottom: 16px;
 }
 
-.digest-row { display: flex; gap: 14px; }
+.digest-row { display: flex; }
 .digest-stat { flex: 1; text-align: center; }
-.digest-stat .num { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.digest-stat .label { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.digest-stat .num { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.digest-stat .label { color: var(--muted); font-size: 11.5px; margin-top: 6px; }
 .digest-stat.at-risk .num { color: var(--at-risk); }
 .digest-stat.pending .num { color: var(--muted); }
 .digest-stat.fulfilled .num { color: var(--fulfilled); }
 
 textarea {
   width: 100%;
-  min-height: 70px;
+  min-height: 66px;
   background: var(--input-bg);
   border: 1px solid var(--card-border);
-  border-radius: 12px;
+  border-radius: 10px;
   color: var(--text);
-  padding: 12px 14px;
+  padding: 11px 13px;
   font-size: 14px;
   font-family: inherit;
   resize: vertical;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.15s ease;
 }
-textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+textarea:focus { border-color: var(--accent); }
 
 button.primary {
   margin-top: 10px;
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 60%, white));
-  color: #0a0b0f;
+  background: var(--accent);
+  color: #ffffff;
   border: none;
-  border-radius: 12px;
-  padding: 11px 20px;
-  font-size: 14px;
-  font-weight: 700;
+  border-radius: 9px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-weight: 600;
   cursor: pointer;
-  box-shadow: 0 4px 16px var(--accent-glow);
 }
-button.primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+button.primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .result-banner {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-radius: 10px;
   font-size: 13px;
   line-height: 1.5;
 }
-.result-banner.extracted { background: rgba(124,158,255,0.12); border: 1px solid rgba(124,158,255,0.3); }
-.result-banner.resolved { background: rgba(95,210,141,0.12); border: 1px solid rgba(95,210,141,0.3); }
-.result-banner.none { background: var(--card-bg); border: 1px solid var(--card-border); color: var(--muted); }
+.result-banner.extracted { background: rgba(124,158,255,0.10); border: 1px solid rgba(124,158,255,0.25); }
+.result-banner.resolved { background: rgba(95,210,141,0.10); border: 1px solid rgba(95,210,141,0.25); }
+.result-banner.none { background: var(--input-bg); border: 1px solid var(--card-border); color: var(--muted); }
 
 .section-title {
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.6px;
+  letter-spacing: 0.5px;
   color: var(--muted);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .commitment-item {
@@ -196,15 +190,16 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
-  padding: 13px 0;
+  padding: 12px 0;
   border-bottom: 1px solid var(--card-border);
 }
-.commitment-item:last-child { border-bottom: none; }
-.commitment-desc { font-size: 14px; }
+.commitment-item:last-child { border-bottom: none; padding-bottom: 0; }
+.commitment-item:first-child { padding-top: 0; }
+.commitment-desc { font-size: 13.5px; }
 .commitment-meta { color: var(--muted); font-size: 11px; margin-top: 3px; }
 
 .badge {
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   padding: 3px 9px;
   border-radius: 20px;
@@ -214,28 +209,29 @@ button.primary:disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
   gap: 5px;
   flex-shrink: 0;
 }
-.badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
-.badge.pending { color: var(--pending); background: rgba(154,161,172,0.14); }
+.badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.badge.pending { color: var(--pending); background: rgba(139,146,160,0.12); }
 .badge.pending::before { background: var(--pending); }
-.badge.at-risk { color: var(--at-risk); background: rgba(240,168,87,0.14); }
+.badge.at-risk { color: var(--at-risk); background: rgba(240,168,87,0.12); }
 .badge.at-risk::before { background: var(--at-risk); }
-.badge.fulfilled { color: var(--fulfilled); background: rgba(95,210,141,0.14); }
+.badge.fulfilled { color: var(--fulfilled); background: rgba(95,210,141,0.12); }
 .badge.fulfilled::before { background: var(--fulfilled); }
 
-.empty-state { color: var(--muted); font-size: 14px; text-align: center; padding: 24px 0; }
+.empty-state { color: var(--muted); font-size: 13.5px; text-align: center; padding: 20px 0; }
 
 .coming-soon {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13.5px;
   text-align: center;
-  padding: 60px 20px;
+  padding: 50px 20px;
 }
-.coming-soon strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 16px; }
+.coming-soon strong { color: var(--text); display: block; margin-bottom: 6px; font-size: 15px; }
 
-/* ---------- Responsive: collapse sidebar to icons-only on narrow screens ---------- */
+/* ---------- Responsive ---------- */
 @media (max-width: 720px) {
-  .sidebar { width: 64px; padding: 20px 8px; }
-  .sidebar-brand, .sidebar-subtitle, .nav-item span.label, .theme-toggle span.label { display: none; }
-  .nav-item { justify-content: center; }
+  .sidebar { width: 60px; padding: 20px 8px; }
+  .sidebar-brand, .sidebar-subtitle, .nav-item .label, .theme-toggle .label { display: none; }
+  .nav-item, .theme-toggle { justify-content: center; }
+  .nav-item .soon-badge { display: none; }
   .main-content { padding: 24px 16px 60px; }
 }
