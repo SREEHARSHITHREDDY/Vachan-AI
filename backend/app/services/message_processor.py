@@ -40,17 +40,23 @@ def _get_demo_user_id(db: Session) -> str:
     return user.user_id
 
 
-def process_incoming_message(db: Session, body: str) -> MessageProcessResult:
+def process_incoming_message(
+    db: Session, body: str, channel: str = "message"
+) -> MessageProcessResult:
     """
     The full closed loop, run for real against the database for the first
     time: save the message, check if it resolves any open commitment,
     check if it contains a new commitment, persist whichever apply.
+
+    channel: "message" (typed text/email), "call", or "in-person" — see
+    MessageIn's docstring (schemas/api.py) for why this distinction exists
+    and what it does/doesn't change about how the pipeline processes it.
     """
     user_id = _get_demo_user_id(db)
 
     message = Message(
         user_id=user_id,
-        channel="manual",
+        channel=channel,
         direction="outbound",
         body_ref=body,
         sent_at=datetime.now(timezone.utc),
@@ -114,6 +120,10 @@ def process_incoming_message(db: Session, body: str) -> MessageProcessResult:
             db.commit()
             db.refresh(new_commitment)
             result.new_commitment = CommitmentOut.model_validate(new_commitment)
+            # channel lives on Message, not Commitment (see CommitmentOut's
+            # docstring) — set it here since we already know it, rather
+            # than requiring the caller to look it up again.
+            result.new_commitment.channel = channel
 
     return result
 

@@ -25,10 +25,10 @@ export function getCommitments(state = null) {
   return request(`/commitments${query}`);
 }
 
-export function postMessage(body) {
+export function postMessage(body, channel = "message") {
   return request("/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({ body, channel }),
   });
 }

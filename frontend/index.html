@@ -35,7 +35,7 @@
     </ul>
 
     <div class="theme-toggle" id="themeToggle">
-      <span><span id="themeIcon">🌙</span> <span class="label" id="themeLabel">Dark Mode</span></span>
+      <span class="nav-icon" id="themeIcon">🌙</span><span class="label" id="themeLabel">Dark Mode</span>
     </div>
   </nav>
 
@@ -65,10 +65,15 @@
       </div>
 
       <div class="card" data-animate>
-        <div class="section-title">Submit a Message</div>
+        <div class="section-title">Log a Commitment</div>
+        <div class="channel-selector" id="channelSelector">
+          <button type="button" class="channel-option active" data-channel="message">✉️ Message</button>
+          <button type="button" class="channel-option" data-channel="call">📞 Call</button>
+          <button type="button" class="channel-option" data-channel="in-person">🤝 In-Person</button>
+        </div>
         <textarea id="messageInput" placeholder="e.g. I'll send you the report by Friday."></textarea>
-        <br>
-        <button class="primary" id="submitBtn">Process Message</button>
+        <div class="channel-hint" id="channelHint">Paste the message text as written.</div>
+        <button class="primary" id="submitBtn">Process</button>
         <div id="resultBanner" class="result-banner" style="display:none;"></div>
       </div>
 
@@ -90,8 +95,9 @@
     <section id="view-contacts" class="view">
       <div class="card">
         <div class="coming-soon">
+          <div class="icon-large">👥</div>
           <strong>Contacts &amp; Relationship Scoring</strong>
-          Planned for Phase 2 — see docs/06_AI_Architecture.md for the relationship decay scoring design.
+          <p>Planned for Phase 2 — see <code>docs/06_AI_Architecture.md</code> for the relationship decay scoring design.</p>
         </div>
       </div>
     </section>
@@ -99,8 +105,9 @@
     <section id="view-actions" class="view">
       <div class="card">
         <div class="coming-soon">
+          <div class="icon-large">📅</div>
           <strong>Calendar Actions</strong>
-          Planned for a later stage — confirmation-gated calendar/reminder integration.
+          <p>Planned for a later stage — confirmation-gated calendar/reminder integration.</p>
         </div>
       </div>
     </section>
@@ -108,8 +115,9 @@
     <section id="view-settings" class="view">
       <div class="card">
         <div class="coming-soon">
+          <div class="icon-large">⚙️</div>
           <strong>Settings</strong>
-          Persona mode, connected accounts, and contact importance weights — planned for Phase 2.
+          <p>Persona mode, connected accounts, and contact importance weights — planned for Phase 2.</p>
         </div>
       </div>
     </section>

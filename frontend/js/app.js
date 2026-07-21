@@ -18,6 +18,24 @@ import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } fro
 
 let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
 
+// Selected input channel — message (typed text), call, or in-person.
+// The extraction/lifecycle mechanism processes all three identically;
+// this only changes the hint text and gets tagged onto the saved
+// Message row so it's visible later in the commitments list.
+let selectedChannel = "message";
+
+const CHANNEL_HINTS = {
+  message: "Paste the message text as written.",
+  call: "Summarize what was said/promised on the call, in your own words.",
+  "in-person": "Summarize what was said/promised in person, in your own words.",
+};
+
+const CHANNEL_LABELS = {
+  message: "Message",
+  call: "Call",
+  "in-person": "In-Person",
+};
+
 // ---------- View switching ----------
 
 function switchView(viewName) {
@@ -59,11 +77,13 @@ function escapeHtml(str) {
 }
 
 function commitmentItemHtml(c) {
+  const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
+  const channelPart = channelLabel ? ` · via ${channelLabel}` : "";
   return `
     <div class="commitment-item" data-commitment-item>
       <div>
         <div class="commitment-desc">${escapeHtml(c.description)}</div>
-        <div class="commitment-meta">${c.commitment_type} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
+        <div class="commitment-meta">${c.commitment_type}${channelPart} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
       </div>
       ${badgeHtml(c.state)}
     </div>
@@ -114,6 +134,22 @@ async function fetchCommitments() {
   }
 }
 
+function selectChannel(channel) {
+  selectedChannel = channel;
+  document.querySelectorAll(".channel-option").forEach((btn) => {
+    btn.classList.toggle("active", btn.dataset.channel === channel);
+  });
+  const hintEl = document.getElementById("channelHint");
+  if (hintEl) hintEl.textContent = CHANNEL_HINTS[channel] || "";
+
+  const textarea = document.getElementById("messageInput");
+  if (textarea) {
+    textarea.placeholder = channel === "message"
+      ? "e.g. I'll send you the report by Friday."
+      : "e.g. Talked with the recruiter — she'll send the offer once HR verification is done.";
+  }
+}
+
 async function handleSubmitMessage() {
   const input = document.getElementById("messageInput");
   const btn = document.getElementById("submitBtn");
@@ -127,7 +163,7 @@ async function handleSubmitMessage() {
   banner.className = "result-banner";
 
   try {
-    const data = await postMessage(body);
+    const data = await postMessage(body, selectedChannel);
     const { new_commitment, resolved_commitment_id, resolution_reasoning } = data;
 
     if (resolved_commitment_id) {
@@ -137,7 +173,7 @@ async function handleSubmitMessage() {
       banner.textContent = `New commitment detected: "${new_commitment.description}" (${new_commitment.commitment_type})`;
       banner.className = "result-banner extracted";
     } else {
-      banner.textContent = "No commitment detected in this message.";
+      banner.textContent = "No commitment detected in this entry.";
       banner.className = "result-banner none";
     }
     banner.style.display = "block";
@@ -146,10 +182,10 @@ async function handleSubmitMessage() {
     input.value = "";
     await Promise.all([fetchDigest(), fetchCommitments()]);
   } catch (err) {
-    showError("Failed to process message — check the backend is running and GROQ_API_KEY is set.");
+    showError("Failed to process — check the backend is running and GROQ_API_KEY is set.");
   } finally {
     btn.disabled = false;
-    btn.textContent = "Process Message";
+    btn.textContent = "Process";
   }
 }
 
@@ -161,11 +197,15 @@ function wireNav() {
   });
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
   document.getElementById("submitBtn").addEventListener("click", handleSubmitMessage);
+  document.querySelectorAll(".channel-option").forEach((btn) => {
+    btn.addEventListener("click", () => selectChannel(btn.dataset.channel));
+  });
 }
 
 async function init() {
   initTheme();
   wireNav();
+  selectChannel("message");
 
   // Decorative layer — wrapped so a failure can never block the app.
   try {

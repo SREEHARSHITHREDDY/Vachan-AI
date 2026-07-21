@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
-from app.models.db_models import Commitment
+from app.models.db_models import Commitment, Message
 from app.schemas.api import ApiResponse, CommitmentOut, DigestOut, MessageIn
 from app.services.message_processor import (
     _get_demo_user_id,
@@ -21,13 +21,41 @@ from app.services.message_processor import (
 router = APIRouter()
 
 
+def _to_commitment_out_list(db: Session, commitments: list[Commitment]) -> list[CommitmentOut]:
+    """
+    Attaches each commitment's source channel (message/call/in-person) —
+    channel lives on Message, not Commitment (see CommitmentOut's
+    docstring), so this does one query for all the messages involved
+    rather than querying per-commitment (avoids N+1 at even modest scale,
+    while still being simple enough for demo scope — no need for a full
+    join/ORM relationship here).
+    """
+    if not commitments:
+        return []
+
+    message_ids = [c.source_message_id for c in commitments]
+    channel_by_message_id = dict(
+        db.query(Message.message_id, Message.channel)
+        .filter(Message.message_id.in_(message_ids))
+        .all()
+    )
+
+    results = []
+    for c in commitments:
+        out = CommitmentOut.model_validate(c)
+        out.channel = channel_by_message_id.get(c.source_message_id)
+        results.append(out)
+    return results
+
+
 @router.post("/messages", response_model=ApiResponse)
 def submit_message(payload: MessageIn, db: Session = Depends(get_db)):
     """
-    The core demo endpoint: submit a message, and the full closed loop
-    (Extraction + Lifecycle cross-referencing) runs against it for real.
+    The core demo endpoint: submit a message, call, or in-person
+    conversation, and the full closed loop (Extraction + Lifecycle
+    cross-referencing) runs against it for real.
     """
-    result = process_incoming_message(db, payload.body)
+    result = process_incoming_message(db, payload.body, payload.channel)
     return ApiResponse(data=result.model_dump())
 
 
@@ -46,7 +74,7 @@ def list_commitments(
         query = query.filter(Commitment.state == state)
 
     commitments = query.order_by(Commitment.created_at.desc()).all()
-    data = [CommitmentOut.model_validate(c).model_dump() for c in commitments]
+    data = [c.model_dump() for c in _to_commitment_out_list(db, commitments)]
     return ApiResponse(data=data)
 
 
@@ -71,7 +99,7 @@ def get_digest(db: Session = Depends(get_db)):
         at_risk_count=len(at_risk),
         pending_count=len(pending),
         fulfilled_today_count=len(fulfilled),
-        at_risk_commitments=[CommitmentOut.model_validate(c) for c in at_risk],
-        upcoming_commitments=[CommitmentOut.model_validate(c) for c in pending],
+        at_risk_commitments=_to_commitment_out_list(db, at_risk),
+        upcoming_commitments=_to_commitment_out_list(db, pending),
     )
     return ApiResponse(data=digest.model_dump())
