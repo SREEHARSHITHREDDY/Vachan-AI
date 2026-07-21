@@ -92,7 +92,25 @@ function commitmentItemHtml(c) {
 
 // ---------- Data fetching + rendering ----------
 
+function skeletonCommitmentItems(count = 2) {
+  return Array(count)
+    .fill(0)
+    .map(
+      () => `
+        <div class="commitment-item">
+          <div style="flex:1">
+            <div class="skeleton skeleton-text"></div>
+            <div class="skeleton skeleton-text short"></div>
+          </div>
+        </div>`
+    )
+    .join("");
+}
+
 async function fetchDigest() {
+  const recentList = document.getElementById("digestRecentList");
+  recentList.innerHTML = skeletonCommitmentItems();
+
   try {
     const data = await getDigest();
 
@@ -110,19 +128,21 @@ async function fetchDigest() {
       fulfilled: data.fulfilled_today_count,
     };
 
-    const recentList = document.getElementById("digestRecentList");
     const combined = [...data.at_risk_commitments, ...data.upcoming_commitments].slice(0, 5);
     recentList.innerHTML = combined.length
       ? combined.map(commitmentItemHtml).join("")
       : `<div class="empty-state">You're all caught up — nothing needs attention today.</div>`;
     slideInList("#digestRecentList [data-commitment-item]");
   } catch (err) {
+    recentList.innerHTML = "";
     showError("Could not load digest — is the backend running at localhost:8000?");
   }
 }
 
 async function fetchCommitments() {
   const listEl = document.getElementById("commitmentsList");
+  listEl.innerHTML = skeletonCommitmentItems(3);
+
   try {
     const data = await getCommitments();
     listEl.innerHTML = data.length
@@ -130,6 +150,7 @@ async function fetchCommitments() {
       : `<div class="empty-state">No commitments tracked yet — submit a message to get started.</div>`;
     slideInList("#commitmentsList [data-commitment-item]");
   } catch (err) {
+    listEl.innerHTML = "";
     showError("Could not load commitments — is the backend running at localhost:8000?");
   }
 }
