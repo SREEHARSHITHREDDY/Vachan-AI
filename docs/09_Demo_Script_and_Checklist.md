@@ -74,6 +74,7 @@ Live demos fail sometimes — bad wifi, a sleepy laptop, whatever. Have a fallba
 | "What's actually novel/patentable here?" | The closed-loop cross-referencing mechanism — detecting fulfillment from an unrelated later message without manual confirmation. Reference the weighted patentability scorecard if asked for rigor (81.5/100 on the primary claim). |
 | "How would this scale?" | Reference the phased Database/Architecture docs — SQLite→Postgres, single-agent→multi-agent, the specific triggers documented for each transition. |
 | "What's not built yet?" | Be honest: Relationship Scoring and Calendar Actions are designed but not implemented; Contacts/Settings are documented Phase 2 features. This honesty is a strength, not a weakness — show the Reconciliation Addendum's deliberate-scoping approach if asked. |
+| "What about login/accounts, and real Gmail/WhatsApp integration?" | Documented as Phase 2/3 requirements (docs/10_Future_Roadmap_Auth_Connectors_UI.md) — auth and Gmail are straightforward engineering work sequenced for when there's a real multi-user base; WhatsApp specifically depends on Meta's Business API approval process, which is an external constraint, not a development-time one. |
 
 ---
 

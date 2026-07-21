@@ -167,3 +167,19 @@ engine with a swappable taxonomy layer.
 **Consequences:** Avoids diluted ICP; gives a concrete, self-testable
 beachhead market with near-zero cold-start data cost.
 *(Source: Mentor Review Brief; BRD Section 8)*
+
+---
+
+### ADR-017: Deferred Auth, Real Connectors, and Full Design System to Phase 2/3
+**Context:** A request came in for real login/signup, real Gmail/WhatsApp
+connectors, and a "world-class" (Apple/Linear/Stripe-level) design system,
+6 days before the July 27th evaluation.
+**Decision:** Document all three as tracked Phase 2/3 requirements
+(see docs/10_Future_Roadmap_Auth_Connectors_UI.md) without implementing
+any of them now. The current demo-scope build (single demo user, manual
+text input, functional sidebar UI) stays as-is and untouched.
+**Consequences:** Preserves a stable, tested, working demo for the
+evaluation. WhatsApp specifically is flagged as blocked on Meta's
+Business API approval process regardless of available dev time, so
+starting that conversation early matters if it's a real priority later.
+*(Source: chat, July 21st)*
