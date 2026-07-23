@@ -33,10 +33,11 @@ export function postMessage(body, channel = "message") {
   });
 }
 
-export function updateCommitmentState(commitmentId, state) {
+export function updateCommitment(commitmentId, updates) {
+  // updates: { state?: "pending"|"at-risk"|"fulfilled", inferred_deadline?: ISO string }
   return request(`/commitments/${commitmentId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ state }),
+    body: JSON.stringify(updates),
   });
 }

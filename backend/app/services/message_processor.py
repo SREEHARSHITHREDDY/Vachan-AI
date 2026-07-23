@@ -134,6 +134,14 @@ def refresh_deadline_states(db: Session, user_id: str) -> None:
     (list/digest endpoints) rather than on a background schedule, since
     there's no task queue at demo scale (Reconciliation Addendum Item 14:
     load/background infra is explicitly deferred).
+
+    Only auto-UPGRADES pending -> at-risk based on deadline proximity.
+    Deliberately never auto-downgrades at-risk -> pending: that would
+    silently undo a manual "mark at-risk" override (a user can flag
+    something at-risk even with >24h left — see CommitmentUpdate), and
+    there's no real product reason to auto-un-flag something a human
+    already decided needed attention. Moving back to pending is only
+    ever an explicit user action.
     """
     open_commitments = (
         db.query(Commitment)
@@ -146,6 +154,6 @@ def refresh_deadline_states(db: Session, user_id: str) -> None:
     )
     for c in open_commitments:
         check = check_deadline_proximity(c.commitment_id, c.inferred_deadline)
-        if check.new_state.value != c.state:
-            c.state = check.new_state.value
+        if c.state == "pending" and check.new_state.value == "at-risk":
+            c.state = "at-risk"
     db.commit()

@@ -36,15 +36,26 @@ class MessageIn(BaseModel):
 
 class CommitmentUpdate(BaseModel):
     """
-    Manual override request body — lets the user mark a commitment
-    fulfilled (or move it back to pending) without needing a second
-    message to trigger the LLM cross-referencing check. This is a
-    deliberately narrow escape hatch: the AI-driven resolution (Lifecycle
-    Tracker) remains the primary mechanism; this exists for the cases
-    where a user just wants to say "I know this is done" directly.
+    Manual override request body — lets the user mark a commitment's
+    state directly, and/or set or edit its deadline, without needing a
+    second message to trigger the LLM cross-referencing check.
+
+    state now includes "at-risk" as a valid manual target (not just
+    pending/fulfilled): a user can flag something urgent by judgment
+    call even when the deadline math (see AT_RISK_THRESHOLD_HOURS in
+    lifecycle_service.py) wouldn't have flagged it automatically yet.
+    The reverse direction — moving OFF at-risk back to pending — is only
+    ever this kind of explicit action too; the automatic deadline-proximity
+    refresh (refresh_deadline_states) deliberately never reverts it on its
+    own, so a manual call here is the only way back to pending once
+    something's been flagged.
+
+    Both fields are optional and independent: a request can update state
+    only, deadline only, or both together in one call.
     """
 
-    state: Literal["pending", "fulfilled"]
+    state: Optional[Literal["pending", "at-risk", "fulfilled"]] = None
+    inferred_deadline: Optional[datetime] = None
 
 
 class CommitmentOut(BaseModel):

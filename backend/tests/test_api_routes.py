@@ -238,3 +238,122 @@ def test_manual_mark_fulfilled(client):
 def test_manual_mark_fulfilled_404_for_unknown_commitment(client):
     response = client.patch("/api/v1/commitments/does-not-exist", json={"state": "fulfilled"})
     assert response.status_code == 404
+
+
+def test_manual_mark_at_risk(client):
+    """
+    Proves a user can flag something at-risk by judgment call even when
+    the deadline (or lack of one) wouldn't have triggered it automatically.
+    """
+    from datetime import datetime, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="I'll get to it eventually.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-by-me", description="Get to it eventually",
+        state="pending", inferred_deadline=None,  # no deadline at all
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    response = client.patch(
+        f"/api/v1/commitments/{commitment.commitment_id}", json={"state": "at-risk"}
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["state"] == "at-risk"
+
+
+def test_manual_deadline_update_without_changing_state(client):
+    """Deadline can be set/edited independently of state."""
+    from datetime import datetime, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="I'll send it.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-by-me", description="Send it", state="pending",
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    new_deadline = "2026-08-15T14:30:00+00:00"
+    response = client.patch(
+        f"/api/v1/commitments/{commitment.commitment_id}",
+        json={"inferred_deadline": new_deadline},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["state"] == "pending"  # unchanged
+    assert data["inferred_deadline"].startswith("2026-08-15T14:30:00")
+
+
+def test_manual_at_risk_is_not_auto_reverted_by_refresh(client):
+    """
+    The actual bug-fix proof: a commitment manually flagged at-risk (with
+    no deadline, or a far-off one) must NOT get silently flipped back to
+    pending the next time commitments are listed (which triggers
+    refresh_deadline_states). Before the fix, this would have reverted.
+    """
+    from datetime import datetime, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="Some far-off promise.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-by-me", description="Some far-off promise",
+        state="pending", inferred_deadline=None,
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    client.patch(f"/api/v1/commitments/{commitment.commitment_id}", json={"state": "at-risk"})
+
+    # Listing triggers refresh_deadline_states — this is exactly the
+    # moment the old code would have reverted it to pending.
+    list_response = client.get("/api/v1/commitments")
+    matching = [c for c in list_response.json()["data"] if c["commitment_id"] == commitment.commitment_id]
+    assert len(matching) == 1
+    assert matching[0]["state"] == "at-risk"

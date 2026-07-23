@@ -12,7 +12,7 @@
  * this project has been documented rather than silently omitted.
  */
 
-import { getDigest, getCommitments, postMessage, updateCommitmentState } from "./api.js";
+import { getDigest, getCommitments, postMessage, updateCommitment } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
 
@@ -85,25 +85,77 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function toDatetimeLocalValue(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function actionButtonsHtml(c) {
+  const id = c.commitment_id;
+  if (c.state === "fulfilled") {
+    return `<button class="mark-toggle-btn" data-toggle-commitment data-commitment-id="${id}" data-current-state="fulfilled" title="Mark as pending again">↺ Undo</button>`;
+  }
+  if (c.state === "at-risk") {
+    return `
+      <button class="mark-toggle-btn" data-set-state="pending" data-commitment-id="${id}" title="Move back to pending">↺ Pending</button>
+      <button class="mark-toggle-btn" data-toggle-commitment data-commitment-id="${id}" data-current-state="at-risk" title="Manually mark fulfilled">✓ Mark Done</button>
+    `;
+  }
+  // pending
+  return `
+    <button class="mark-toggle-btn" data-set-state="at-risk" data-commitment-id="${id}" title="Flag as at-risk even if the deadline math wouldn't yet">⚠ At Risk</button>
+    <button class="mark-toggle-btn" data-toggle-commitment data-commitment-id="${id}" data-current-state="pending" title="Manually mark fulfilled">✓ Mark Done</button>
+  `;
+}
+
+function deadlineRowHtml(c) {
+  const display = c.inferred_deadline
+    ? `📅 ${formatDate(c.inferred_deadline)}`
+    : `📅 No deadline set`;
+  return `
+    <div class="deadline-row" data-deadline-row data-commitment-id="${c.commitment_id}" data-current-deadline="${c.inferred_deadline || ""}">
+      <span class="deadline-display">${display}</span>
+      <button class="deadline-edit-btn" data-edit-deadline title="Set or edit deadline">Edit</button>
+    </div>
+  `;
+}
+
+function startEditingDeadline(row) {
+  if (!row) return;
+  const currentDeadline = row.dataset.currentDeadline;
+  const inputValue = toDatetimeLocalValue(currentDeadline);
+  row.innerHTML = `
+    <input type="datetime-local" value="${inputValue}" class="deadline-input" />
+    <button class="deadline-edit-btn deadline-save-btn" data-save-deadline>Save</button>
+    <button class="deadline-edit-btn" data-cancel-deadline>Cancel</button>
+  `;
+}
+
+function cancelEditingDeadline(row) {
+  if (!row) return;
+  const currentDeadline = row.dataset.currentDeadline;
+  const display = currentDeadline ? `📅 ${formatDate(currentDeadline)}` : `📅 No deadline set`;
+  row.innerHTML = `
+    <span class="deadline-display">${display}</span>
+    <button class="deadline-edit-btn" data-edit-deadline title="Set or edit deadline">Edit</button>
+  `;
+}
+
 function commitmentItemHtml(c) {
   const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
   const channelPart = channelLabel ? ` · via ${channelLabel}` : "";
-  const isFulfilled = c.state === "fulfilled";
   return `
     <div class="commitment-item" data-commitment-item>
-      <div>
+      <div style="flex:1;">
         <div class="commitment-desc">${escapeHtml(c.description)}</div>
         <div class="commitment-meta">${c.commitment_type}${channelPart} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
+        ${deadlineRowHtml(c)}
       </div>
-      <div style="display:flex; align-items:center; gap:10px;">
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         ${badgeHtml(c.state)}
-        <button
-          class="mark-toggle-btn"
-          data-toggle-commitment
-          data-commitment-id="${c.commitment_id}"
-          data-current-state="${c.state}"
-          title="${isFulfilled ? 'Mark as pending again' : 'Manually mark fulfilled'}"
-        >${isFulfilled ? "↺ Undo" : "✓ Mark Done"}</button>
+        ${actionButtonsHtml(c)}
       </div>
     </div>
   `;
@@ -247,6 +299,7 @@ function kanbanCardHtml(c) {
          data-commitment-id="${c.commitment_id}" data-current-state="${c.state}">
       <div class="kanban-card-desc">${escapeHtml(c.description)}</div>
       <div class="kanban-card-meta">${c.commitment_type}${channelLabel ? " · " + channelLabel : ""}</div>
+      ${c.inferred_deadline ? `<div class="kanban-card-deadline">📅 ${formatDate(c.inferred_deadline)}</div>` : ""}
     </div>
   `;
 }
@@ -313,7 +366,7 @@ async function handleSubmitMessage() {
     fadeInBanner(banner);
 
     input.value = "";
-    await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard()]);
+    await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
   } catch (err) {
     showError("Failed to process — check the backend is running and GROQ_API_KEY is set.");
   } finally {
@@ -339,20 +392,72 @@ function wireNav() {
   // listener on the document catches clicks on any of them, present or
   // future, without re-binding per render.
   document.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-toggle-commitment]");
-    if (!btn) return;
+    const toggleBtn = e.target.closest("[data-toggle-commitment]");
+    if (toggleBtn) {
+      const commitmentId = toggleBtn.dataset.commitmentId;
+      const currentState = toggleBtn.dataset.currentState;
+      const newState = currentState === "fulfilled" ? "pending" : "fulfilled";
 
-    const commitmentId = btn.dataset.commitmentId;
-    const currentState = btn.dataset.currentState;
-    const newState = currentState === "fulfilled" ? "pending" : "fulfilled";
+      toggleBtn.disabled = true;
+      try {
+        await updateCommitment(commitmentId, { state: newState });
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+      } catch (err) {
+        showError("Could not update commitment — is the backend running?");
+        toggleBtn.disabled = false;
+      }
+      return;
+    }
 
-    btn.disabled = true;
-    try {
-      await updateCommitmentState(commitmentId, newState);
-      await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard()]);
-    } catch (err) {
-      showError("Could not update commitment — is the backend running?");
-      btn.disabled = false;
+    const setStateBtn = e.target.closest("[data-set-state]");
+    if (setStateBtn) {
+      const commitmentId = setStateBtn.dataset.commitmentId;
+      const targetState = setStateBtn.dataset.setState;
+
+      setStateBtn.disabled = true;
+      try {
+        await updateCommitment(commitmentId, { state: targetState });
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+      } catch (err) {
+        showError("Could not update commitment — is the backend running?");
+        setStateBtn.disabled = false;
+      }
+      return;
+    }
+
+    const editBtn = e.target.closest("[data-edit-deadline]");
+    if (editBtn) {
+      startEditingDeadline(editBtn.closest("[data-deadline-row]"));
+      return;
+    }
+
+    const saveBtn = e.target.closest("[data-save-deadline]");
+    if (saveBtn) {
+      const row = saveBtn.closest("[data-deadline-row]");
+      const input = row.querySelector("input[type='datetime-local']");
+      const commitmentId = row.dataset.commitmentId;
+      const value = input.value; // "YYYY-MM-DDTHH:mm", local time — the
+      // browser's datetime-local input has no timezone; new Date() parses
+      // it as local time, and .toISOString() converts to UTC for the
+      // backend's timezone-aware datetime field.
+      if (!value) return;
+
+      saveBtn.disabled = true;
+      try {
+        const isoUtc = new Date(value).toISOString();
+        await updateCommitment(commitmentId, { inferred_deadline: isoUtc });
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+      } catch (err) {
+        showError("Could not update deadline — is the backend running?");
+        saveBtn.disabled = false;
+      }
+      return;
+    }
+
+    const cancelBtn = e.target.closest("[data-cancel-deadline]");
+    if (cancelBtn) {
+      const row = cancelBtn.closest("[data-deadline-row]");
+      cancelEditingDeadline(row);
     }
   });
 
@@ -401,8 +506,8 @@ function wireNav() {
       if (!commitmentId || currentState === targetState) return;
 
       try {
-        await updateCommitmentState(commitmentId, targetState);
-        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard()]);
+        await updateCommitment(commitmentId, { state: targetState });
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
       } catch (err) {
         showError("Could not move commitment — is the backend running?");
       }

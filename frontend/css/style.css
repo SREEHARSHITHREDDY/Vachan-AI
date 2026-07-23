@@ -779,3 +779,45 @@ body::before {
   .calendar-cell { min-height: 44px; padding: 3px; }
   .calendar-event, .calendar-more { display: none; }
 }
+
+/* ---------- Deadline display + inline editor ---------- */
+
+.deadline-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: 11.5px;
+}
+.deadline-display { color: var(--muted); }
+.deadline-edit-btn {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.deadline-edit-btn:hover { color: var(--accent); border-color: var(--accent); }
+.deadline-save-btn { color: var(--accent); border-color: var(--accent); }
+.deadline-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.deadline-input {
+  font-size: 11.5px;
+  font-family: inherit;
+  background: var(--input-bg);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+
+.kanban-card-deadline {
+  font-size: 10px;
+  color: var(--muted);
+  margin-top: 4px;
+}
