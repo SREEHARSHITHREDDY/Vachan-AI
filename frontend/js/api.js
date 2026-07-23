@@ -41,3 +41,7 @@ export function updateCommitment(commitmentId, updates) {
     body: JSON.stringify(updates),
   });
 }
+
+export function deleteCommitment(commitmentId) {
+  return request(`/commitments/${commitmentId}`, { method: "DELETE" });
+}

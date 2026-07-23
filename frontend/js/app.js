@@ -12,7 +12,7 @@
  * this project has been documented rather than silently omitted.
  */
 
-import { getDigest, getCommitments, postMessage, updateCommitment } from "./api.js";
+import { getDigest, getCommitments, postMessage, updateCommitment, deleteCommitment } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
 
@@ -156,6 +156,7 @@ function commitmentItemHtml(c) {
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         ${badgeHtml(c.state)}
         ${actionButtonsHtml(c)}
+        <button class="delete-btn" data-delete-commitment data-commitment-id="${c.commitment_id}" title="Delete this commitment">🗑</button>
       </div>
     </div>
   `;
@@ -458,6 +459,23 @@ function wireNav() {
     if (cancelBtn) {
       const row = cancelBtn.closest("[data-deadline-row]");
       cancelEditingDeadline(row);
+      return;
+    }
+
+    const deleteBtn = e.target.closest("[data-delete-commitment]");
+    if (deleteBtn) {
+      const confirmed = window.confirm("Delete this commitment? This can't be undone from the UI.");
+      if (!confirmed) return;
+
+      const commitmentId = deleteBtn.dataset.commitmentId;
+      deleteBtn.disabled = true;
+      try {
+        await deleteCommitment(commitmentId);
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+      } catch (err) {
+        showError("Could not delete commitment — is the backend running?");
+        deleteBtn.disabled = false;
+      }
     }
   });
 

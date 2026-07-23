@@ -142,3 +142,32 @@ def update_commitment(
 
     out = _to_commitment_out_list(db, [commitment])[0]
     return ApiResponse(data=out.model_dump())
+
+
+@router.delete("/commitments/{commitment_id}", response_model=ApiResponse)
+def delete_commitment(commitment_id: str, db: Session = Depends(get_db)):
+    """
+    Soft-delete — sets is_deleted/deleted_at (columns that already
+    existed on the model since Stage 3, per the Reconciliation Addendum's
+    soft-delete decision) rather than removing the row. This preserves
+    history for anything that might reference it later (e.g. relationship
+    scoring in a future phase), and matches how Contact soft-delete works.
+    """
+    user_id = _get_demo_user_id(db)
+    commitment = (
+        db.query(Commitment)
+        .filter(
+            Commitment.commitment_id == commitment_id,
+            Commitment.user_id == user_id,
+            Commitment.is_deleted.is_(False),
+        )
+        .first()
+    )
+    if commitment is None:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+
+    commitment.is_deleted = True
+    commitment.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+
+    return ApiResponse(data={"commitment_id": commitment_id, "deleted": True})

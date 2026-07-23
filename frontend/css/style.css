@@ -821,3 +821,17 @@ body::before {
   color: var(--muted);
   margin-top: 4px;
 }
+
+/* Delete commitment button */
+.delete-btn {
+  font-size: 13px;
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+.delete-btn:hover { color: var(--error); border-color: var(--error); background: rgba(240,87,87,0.08); }
+.delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }

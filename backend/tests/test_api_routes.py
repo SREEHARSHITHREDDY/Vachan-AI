@@ -357,3 +357,56 @@ def test_manual_at_risk_is_not_auto_reverted_by_refresh(client):
     matching = [c for c in list_response.json()["data"] if c["commitment_id"] == commitment.commitment_id]
     assert len(matching) == 1
     assert matching[0]["state"] == "at-risk"
+
+
+def test_delete_commitment_soft_deletes(client):
+    """Proves delete actually soft-deletes (row stays, is_deleted flips)
+    and the commitment no longer appears in the list afterward."""
+    from datetime import datetime, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="Delete me test.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-by-me", description="Something to delete",
+        state="pending",
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    response = client.delete(f"/api/v1/commitments/{commitment.commitment_id}")
+    assert response.status_code == 200
+    assert response.json()["data"]["deleted"] is True
+
+    list_response = client.get("/api/v1/commitments")
+    matching = [c for c in list_response.json()["data"] if c["commitment_id"] == commitment.commitment_id]
+    assert len(matching) == 0  # gone from the list, but soft-deleted, not hard-deleted
+
+    # Confirm the row itself still exists in the DB (soft-delete proof).
+    # expire_all() is required here: the DELETE request went through a
+    # DIFFERENT session (via the dependency override), so this session's
+    # identity map still has the old, pre-delete cached copy of the row
+    # unless told to discard it and re-fetch.
+    db.expire_all()
+    still_there = db.query(Commitment).filter_by(commitment_id=commitment.commitment_id).first()
+    assert still_there is not None
+    assert still_there.is_deleted is True
+
+
+def test_delete_commitment_404_for_unknown(client):
+    response = client.delete("/api/v1/commitments/does-not-exist")
+    assert response.status_code == 404
