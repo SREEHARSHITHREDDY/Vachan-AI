@@ -835,3 +835,33 @@ body::before {
 }
 .delete-btn:hover { color: var(--error); border-color: var(--error); background: rgba(240,87,87,0.08); }
 .delete-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Calendar assign/edit panel ---------- */
+
+.calendar-cell:not(.calendar-cell-empty) { cursor: pointer; transition: border-color 0.15s ease; }
+.calendar-cell:not(.calendar-cell-empty):hover { border-color: var(--accent); }
+.calendar-event { cursor: pointer; }
+.calendar-event:hover { filter: brightness(1.15); }
+
+.calendar-assign-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--accent-glow);
+  border: 1px solid var(--accent);
+}
+.calendar-assign-label { font-size: 12.5px; font-weight: 600; color: var(--text); width: 100%; margin-bottom: 2px; }
+.calendar-assign-select {
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 4px 8px;
+  max-width: 220px;
+}

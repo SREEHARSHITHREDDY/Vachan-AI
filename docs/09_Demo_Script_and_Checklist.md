@@ -9,7 +9,7 @@ Run through this once, start to finish, before you consider the build "done." Ch
 
 ### Backend
 - [ ] `./venv/bin/pytest tests/ -v` → shows **21 passed, 1 skipped** (or 22/1 if you kept the extra live test)
-- [ ] `./venv/bin/pytest tests/test_extraction_service.py --run-live -v -s` → real precision number displays (should be ~80%)
+- [ ] `./venv/bin/pytest tests/test_extraction_service.py --run-live -v -s` → real precision number displays (should be in the 80-90% range)
 - [ ] Fresh server start works cleanly: `lsof -ti:8000 | xargs kill -9` then `./venv/bin/uvicorn app.main:app --reload --port 8000` → no errors, "Application startup complete"
 - [ ] `curl http://localhost:8000/health` → `{"status":"ok"}`
 
@@ -55,7 +55,7 @@ Live demos fail sometimes — bad wifi, a sleepy laptop, whatever. Have a fallba
 6. Show the commitment now marked Fulfilled in the Commitments view
 
 ### The technical story (60 seconds)
-> "This runs on a real four-stage architecture: an LLM-based extraction engine, a lifecycle tracker that does the cross-referencing you just saw, a persistence layer, and a REST API — all documented [gesture to docs], all tested [gesture to test suite], with a real accuracy evaluation: 80% exact classification precision, 93% on the core is-it-a-commitment judgment, run against a representative test set."
+> "This runs on a real four-stage architecture: an LLM-based extraction engine, a lifecycle tracker that does the cross-referencing you just saw, a persistence layer, and a REST API — all documented [gesture to docs], all tested [gesture to test suite], with a real accuracy evaluation: 86.7% exact classification precision, ~93% on the core is-it-a-commitment judgment, run against a representative test set."
 
 ### The bigger picture (30-45 seconds)
 > "This is scoped as Phase 1 for students — the next phases extend to working professionals and eventually executives, with the same core engine, just a different taxonomy layer. I've also done a full patentability analysis on the core mechanism [mention Point 1: closed-loop commitment lifecycle detection] and a phased business model from freemium through to enterprise contracts."
@@ -70,7 +70,7 @@ Live demos fail sometimes — bad wifi, a sleepy laptop, whatever. Have a fallba
 | Likely Question | Your Answer |
 |---|---|
 | "Why not just use an existing tool like Superhuman or Lindy?" | Those triage by urgency/topic and focus on drafting/sending replies. None of them treat a promise as a trackable lifecycle object with automatic cross-referenced resolution — that's the specific gap this fills. |
-| "Is the AI actually reliable?" | Point to the real precision numbers (80%/93%), and explain the confirmation-gating design (no autonomous actions without user approval) as the trust safeguard. |
+| "Is the AI actually reliable?" | Point to the real precision numbers (86.7%/~93%), and explain the confirmation-gating design (no autonomous actions without user approval) as the trust safeguard. |
 | "What's actually novel/patentable here?" | The closed-loop cross-referencing mechanism — detecting fulfillment from an unrelated later message without manual confirmation. Reference the weighted patentability scorecard if asked for rigor (81.5/100 on the primary claim). |
 | "How would this scale?" | Reference the phased Database/Architecture docs — SQLite→Postgres, single-agent→multi-agent, the specific triggers documented for each transition. |
 | "What's not built yet?" | Be honest: Relationship Scoring and Calendar Actions are designed but not implemented; Contacts/Settings are documented Phase 2 features. This honesty is a strength, not a weakness — show the Reconciliation Addendum's deliberate-scoping approach if asked. |

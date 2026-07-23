@@ -19,11 +19,61 @@ import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } fro
 let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
 let calendarState = { year: new Date().getFullYear(), month: new Date().getMonth() };
 let calendarCommitmentsCache = [];
+let calendarPanelTarget = { mode: null, commitmentId: null, date: null };
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
+
+function openCalendarAssignPanel(dateKey) {
+  const noDeadlineCommitments = calendarCommitmentsCache.filter((c) => !c.inferred_deadline);
+  const panel = document.getElementById("calendarAssignPanel");
+  const select = document.getElementById("calendarAssignSelect");
+  const label = document.getElementById("calendarAssignLabel");
+  const dateTimeInput = document.getElementById("calendarAssignDateTime");
+
+  if (noDeadlineCommitments.length === 0) {
+    label.textContent = `No commitments without a deadline to assign to ${dateKey}.`;
+    select.style.display = "none";
+    dateTimeInput.style.display = "none";
+    document.getElementById("calendarAssignSaveBtn").style.display = "none";
+  } else {
+    label.textContent = `Assign a deadline on ${dateKey} to:`;
+    select.style.display = "";
+    dateTimeInput.style.display = "";
+    document.getElementById("calendarAssignSaveBtn").style.display = "";
+    select.innerHTML = noDeadlineCommitments
+      .map((c) => `<option value="${c.commitment_id}">${escapeHtml(c.description)}</option>`)
+      .join("");
+    dateTimeInput.value = `${dateKey}T17:00`;
+  }
+
+  calendarPanelTarget = { mode: "assign", commitmentId: null, date: dateKey };
+  panel.style.display = "flex";
+}
+
+function openCalendarEditPanel(commitmentId) {
+  const commitment = calendarCommitmentsCache.find((c) => c.commitment_id === commitmentId);
+  if (!commitment) return;
+
+  const panel = document.getElementById("calendarAssignPanel");
+  document.getElementById("calendarAssignLabel").textContent = `Edit deadline — ${commitment.description}`;
+  document.getElementById("calendarAssignSelect").style.display = "none";
+  const dateTimeInput = document.getElementById("calendarAssignDateTime");
+  dateTimeInput.style.display = "";
+  dateTimeInput.value = toDatetimeLocalValue(commitment.inferred_deadline);
+  document.getElementById("calendarAssignSaveBtn").style.display = "";
+
+  calendarPanelTarget = { mode: "edit", commitmentId, date: null };
+  panel.style.display = "flex";
+}
+
+function closeCalendarPanel() {
+  document.getElementById("calendarAssignPanel").style.display = "none";
+  calendarPanelTarget = { mode: null, commitmentId: null, date: null };
+}
+
 
 // Selected input channel — message (typed text), call, or in-person.
 // The extraction/lifecycle mechanism processes all three identically;
@@ -274,9 +324,9 @@ function renderCalendarGrid() {
     const events = byDate[dateKey] || [];
     const isToday = dateKey === todayKey;
     cellsHtml += `
-      <div class="calendar-cell${isToday ? " calendar-cell-today" : ""}">
+      <div class="calendar-cell${isToday ? " calendar-cell-today" : ""}" data-calendar-day data-date="${dateKey}">
         <div class="calendar-date">${day}</div>
-        ${events.slice(0, 3).map((c) => `<div class="calendar-event badge-state-${c.state}" title="${escapeHtml(c.description)}">${escapeHtml(c.description)}</div>`).join("")}
+        ${events.slice(0, 3).map((c) => `<div class="calendar-event badge-state-${c.state}" data-calendar-event data-commitment-id="${c.commitment_id}" title="Click to edit — ${escapeHtml(c.description)}">${escapeHtml(c.description)}</div>`).join("")}
         ${events.length > 3 ? `<div class="calendar-more">+${events.length - 3} more</div>` : ""}
       </div>
     `;
@@ -489,6 +539,51 @@ function wireNav() {
     calendarState.month += 1;
     if (calendarState.month > 11) { calendarState.month = 0; calendarState.year += 1; }
     renderCalendarGrid();
+  });
+
+  // Calendar day/event clicks — event delegation since cells are rendered
+  // dynamically. Clicking an event pill opens edit mode for that specific
+  // commitment; clicking anywhere else in a day cell opens assign mode
+  // for that date (stopPropagation on the event pill prevents both
+  // firing at once).
+  document.getElementById("calendarGrid")?.addEventListener("click", (e) => {
+    const eventPill = e.target.closest("[data-calendar-event]");
+    if (eventPill) {
+      e.stopPropagation();
+      openCalendarEditPanel(eventPill.dataset.commitmentId);
+      return;
+    }
+    const dayCell = e.target.closest("[data-calendar-day]");
+    if (dayCell) {
+      openCalendarAssignPanel(dayCell.dataset.date);
+    }
+  });
+
+  document.getElementById("calendarAssignCancelBtn")?.addEventListener("click", closeCalendarPanel);
+
+  document.getElementById("calendarAssignSaveBtn")?.addEventListener("click", async () => {
+    const dateTimeInput = document.getElementById("calendarAssignDateTime");
+    const value = dateTimeInput.value;
+    if (!value) return;
+
+    const commitmentId =
+      calendarPanelTarget.mode === "edit"
+        ? calendarPanelTarget.commitmentId
+        : document.getElementById("calendarAssignSelect").value;
+    if (!commitmentId) return;
+
+    const saveBtn = document.getElementById("calendarAssignSaveBtn");
+    saveBtn.disabled = true;
+    try {
+      const isoUtc = new Date(value).toISOString();
+      await updateCommitment(commitmentId, { inferred_deadline: isoUtc });
+      closeCalendarPanel();
+      await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+    } catch (err) {
+      showError("Could not set deadline — is the backend running?");
+    } finally {
+      saveBtn.disabled = false;
+    }
   });
 
   // Kanban drag-and-drop — event delegation since cards are rendered

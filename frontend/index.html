@@ -168,6 +168,13 @@
           <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
         </div>
         <div class="calendar-grid" id="calendarGrid"></div>
+        <div class="calendar-assign-panel" id="calendarAssignPanel" style="display:none;">
+          <div class="calendar-assign-label" id="calendarAssignLabel"></div>
+          <select class="calendar-assign-select" id="calendarAssignSelect"></select>
+          <input type="datetime-local" class="deadline-input" id="calendarAssignDateTime" />
+          <button class="deadline-edit-btn deadline-save-btn" id="calendarAssignSaveBtn">Save</button>
+          <button class="deadline-edit-btn" id="calendarAssignCancelBtn">Cancel</button>
+        </div>
       </div>
 
       <div class="card" data-animate>
