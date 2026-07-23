@@ -17,7 +17,7 @@
 
   <!-- Sidebar -->
   <nav class="sidebar">
-    <div class="sidebar-brand">Vachan<span>AI</span></div>
+    <div class="sidebar-brand"><span class="brand-glyph">✓</span>Vachan<span>AI</span></div>
     <div class="sidebar-subtitle">Commitment &amp; Relationship Intelligence</div>
 
     <ul class="nav-list">
@@ -50,6 +50,26 @@
 
     <!-- Digest view -->
     <section id="view-digest" class="view active">
+      <div class="hero-banner" data-animate>
+        <div class="hero-grid"></div>
+        <div class="hero-content">
+          <div class="hero-badge">
+            Agentic AI Commitment Tracking
+            <span class="hero-badge-arrow">›</span>
+          </div>
+          <h1 class="hero-title">
+            Never let a promise <span class="hero-gradient">quietly slip</span>
+          </h1>
+          <p class="hero-description">
+            VachanAI tracks what you promise — and what's promised to you — then closes
+            the loop automatically when it's fulfilled.
+          </p>
+          <button class="hero-cta" onclick="document.getElementById('messageInput').scrollIntoView({behavior:'smooth', block:'center'}); document.getElementById('messageInput').focus();">
+            Log a commitment
+          </button>
+        </div>
+      </div>
+
       <div class="card" data-animate>
         <div class="section-title">Today's Digest</div>
         <div class="digest-row">
@@ -92,9 +112,38 @@
 
     <!-- Commitments view -->
     <section id="view-commitments" class="view">
-      <div class="card" data-animate>
+      <div class="view-toggle" data-animate>
+        <button class="view-toggle-btn active" data-commitments-view="list">List</button>
+        <button class="view-toggle-btn" data-commitments-view="board">Board</button>
+      </div>
+
+      <div class="card" id="commitmentsListWrapper" data-animate>
         <div class="section-title">All Commitments</div>
         <div id="commitmentsList"></div>
+      </div>
+
+      <div id="commitmentsBoardWrapper" style="display:none;">
+        <div class="kanban-board">
+          <div class="kanban-column" data-column="pending">
+            <div class="kanban-column-header">
+              <span>Pending</span><span class="kanban-count" id="kanbanPendingCount">0</span>
+            </div>
+            <div class="kanban-dropzone" data-dropzone="pending" id="kanbanPending"></div>
+          </div>
+          <div class="kanban-column" data-column="at-risk">
+            <div class="kanban-column-header">
+              <span>At Risk</span><span class="kanban-count" id="kanbanAtRiskCount">0</span>
+              <span class="kanban-auto-label">auto</span>
+            </div>
+            <div class="kanban-dropzone kanban-dropzone-readonly" data-dropzone="at-risk" id="kanbanAtRisk"></div>
+          </div>
+          <div class="kanban-column" data-column="fulfilled">
+            <div class="kanban-column-header">
+              <span>Fulfilled</span><span class="kanban-count" id="kanbanFulfilledCount">0</span>
+            </div>
+            <div class="kanban-dropzone" data-dropzone="fulfilled" id="kanbanFulfilled"></div>
+          </div>
+        </div>
       </div>
     </section>
 

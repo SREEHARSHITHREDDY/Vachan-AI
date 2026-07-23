@@ -126,7 +126,8 @@ body {
 .main-content {
   flex: 1;
   padding: 40px 44px 80px;
-  max-width: 740px;
+  max-width: 1100px;
+  width: 100%;
 }
 
 .view { display: none; }
@@ -401,14 +402,21 @@ button.primary:hover:not(:disabled) { transform: translateY(-1px); }
   vertical-align: middle;
 }
 
-/* Digest stat icons */
+/* Digest stat icons — consistent container height so all three numbers
+   start at the same vertical position, regardless of each glyph's
+   natural size (the pending dot is visually smaller than ⚠/✓ by design,
+   but needs the same box height to stay aligned). */
 .stat-icon {
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 13px;
   margin-bottom: 6px;
   opacity: 0.85;
 }
 .digest-stat.at-risk .stat-icon { color: var(--at-risk); }
-.digest-stat.pending .stat-icon { color: var(--pending); font-size: 8px; }
+.digest-stat.pending .stat-icon { color: var(--pending); font-size: 9px; }
 .digest-stat.fulfilled .stat-icon { color: var(--fulfilled); }
 
 /* Custom thin scrollbar — a detail most sites skip */
@@ -436,4 +444,262 @@ button.primary:hover:not(:disabled) { transform: translateY(-1px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .view.active { animation: none; opacity: 1; }
+}
+
+/* ---------- Hero Banner: retro-grid + gradient headline ---------- */
+/* Adapted from a React/Tailwind hero component's visual concept into
+   plain CSS — no React/Tailwind/shadcn dependency, matches the existing
+   theme system (dark/light) via CSS variables rather than hardcoded
+   colors, and respects prefers-reduced-motion. */
+
+.hero-banner {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  padding: 40px 32px 36px;
+  margin-bottom: 20px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  text-align: center;
+}
+
+/* The retro grid: a perspective-tilted, animated line grid, faded to
+   transparent toward the viewer — pure CSS, same trick as the original
+   component (two linear-gradients forming a grid, 3D-rotated). */
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.35;
+  perspective: 200px;
+}
+.hero-grid::before {
+  content: "";
+  position: absolute;
+  inset: -100% -50%;
+  width: 300%;
+  height: 300%;
+  background-image:
+    linear-gradient(to right, var(--card-border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--card-border) 1px, transparent 1px);
+  background-size: 48px 48px;
+  transform: rotateX(65deg);
+  transform-origin: 50% 0%;
+  animation: hero-grid-move 8s linear infinite;
+}
+.hero-grid::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, var(--card-bg) 10%, transparent 70%);
+}
+@keyframes hero-grid-move {
+  from { background-position: 0 0; }
+  to { background-position: 0 48px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-grid::before { animation: none; }
+}
+
+.hero-content { position: relative; z-index: 1; }
+
+.hero-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 20px;
+  padding: 6px 14px;
+  margin-bottom: 18px;
+}
+.hero-badge-arrow { transition: transform 0.2s ease; }
+.hero-banner:hover .hero-badge-arrow { transform: translateX(3px); }
+
+.hero-title {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.6px;
+  line-height: 1.15;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.hero-gradient {
+  background: linear-gradient(90deg, var(--accent), var(--fulfilled));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.hero-description {
+  color: var(--muted);
+  font-size: 14.5px;
+  line-height: 1.6;
+  max-width: 440px;
+  margin: 0 auto 22px;
+}
+
+.hero-cta {
+  background: var(--accent);
+  color: #ffffff;
+  border: none;
+  border-radius: 10px;
+  padding: 11px 24px;
+  font-size: 13.5px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 4px 16px var(--accent-glow);
+  transition: transform 0.12s ease, box-shadow 0.18s ease;
+}
+.hero-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+.hero-cta:active { transform: scale(0.98); }
+
+@media (max-width: 720px) {
+  .hero-banner { padding: 28px 20px 24px; }
+  .hero-title { font-size: 22px; }
+}
+
+/* ---------- Film-grain texture overlay ---------- */
+/* Adapted from the "premium/Vercel/Linear-tier" background aesthetic —
+   a subtle noise texture over the gradient mesh gives flat surfaces
+   tactile depth instead of looking like a flat digital gradient.
+   Pure CSS/SVG (inline feTurbulence filter as a data URI) — no external
+   image asset, no dependency. Fixed + pointer-events:none so it never
+   interferes with clicks, and low opacity so it reads as texture, not
+   visible noise. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+:root[data-theme="light"] body::before { opacity: 0.02; }
+
+/* Manual mark-fulfilled/undo toggle button */
+.mark-toggle-btn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--input-bg);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.mark-toggle-btn:hover { color: var(--accent); border-color: var(--accent); }
+.mark-toggle-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------- Kanban Board ---------- */
+
+.view-toggle {
+  display: inline-flex;
+  gap: 4px;
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 16px;
+}
+.view-toggle-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 6px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.view-toggle-btn.active { background: var(--accent); color: #ffffff; }
+.view-toggle-btn:not(.active):hover { color: var(--text); }
+
+.kanban-board {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.kanban-column {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  padding: 14px;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+.kanban-column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  margin-bottom: 12px;
+}
+.kanban-count {
+  background: var(--input-bg);
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-size: 11px;
+}
+.kanban-auto-label {
+  margin-left: auto;
+  font-size: 9px;
+  font-style: italic;
+  text-transform: none;
+  opacity: 0.7;
+}
+
+.kanban-dropzone {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+  border-radius: 10px;
+  transition: background 0.15s ease;
+}
+.kanban-dropzone.drag-over { background: var(--accent-glow); }
+.kanban-dropzone-readonly { opacity: 0.85; }
+
+.kanban-card {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: grab;
+  transition: box-shadow 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+}
+.kanban-card:active { cursor: grabbing; }
+.kanban-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,0.12); transform: translateY(-1px); }
+.kanban-card.dragging { opacity: 0.4; }
+.kanban-card-desc { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.kanban-card-meta { font-size: 10.5px; color: var(--muted); }
+
+.kanban-empty {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 20px 8px;
+  border: 1px dashed var(--card-border);
+  border-radius: 8px;
+}
+
+@media (max-width: 900px) {
+  .kanban-board { grid-template-columns: 1fr; }
 }

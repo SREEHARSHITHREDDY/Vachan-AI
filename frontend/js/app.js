@@ -12,7 +12,7 @@
  * this project has been documented rather than silently omitted.
  */
 
-import { getDigest, getCommitments, postMessage } from "./api.js";
+import { getDigest, getCommitments, postMessage, updateCommitmentState } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
 
@@ -79,13 +79,23 @@ function escapeHtml(str) {
 function commitmentItemHtml(c) {
   const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
   const channelPart = channelLabel ? ` · via ${channelLabel}` : "";
+  const isFulfilled = c.state === "fulfilled";
   return `
     <div class="commitment-item" data-commitment-item>
       <div>
         <div class="commitment-desc">${escapeHtml(c.description)}</div>
         <div class="commitment-meta">${c.commitment_type}${channelPart} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
       </div>
-      ${badgeHtml(c.state)}
+      <div style="display:flex; align-items:center; gap:10px;">
+        ${badgeHtml(c.state)}
+        <button
+          class="mark-toggle-btn"
+          data-toggle-commitment
+          data-commitment-id="${c.commitment_id}"
+          data-current-state="${c.state}"
+          title="${isFulfilled ? 'Mark as pending again' : 'Manually mark fulfilled'}"
+        >${isFulfilled ? "↺ Undo" : "✓ Mark Done"}</button>
+      </div>
     </div>
   `;
 }
@@ -149,10 +159,38 @@ async function fetchCommitments() {
       ? data.map(commitmentItemHtml).join("")
       : `<div class="empty-state">No commitments tracked yet — submit a message to get started.</div>`;
     slideInList("#commitmentsList [data-commitment-item]");
+    renderKanbanBoard(data);
   } catch (err) {
     listEl.innerHTML = "";
     showError("Could not load commitments — is the backend running at localhost:8000?");
   }
+}
+
+function kanbanCardHtml(c) {
+  const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
+  return `
+    <div class="kanban-card" draggable="true" data-kanban-card
+         data-commitment-id="${c.commitment_id}" data-current-state="${c.state}">
+      <div class="kanban-card-desc">${escapeHtml(c.description)}</div>
+      <div class="kanban-card-meta">${c.commitment_type}${channelLabel ? " · " + channelLabel : ""}</div>
+    </div>
+  `;
+}
+
+function renderKanbanBoard(data) {
+  const buckets = { pending: [], "at-risk": [], fulfilled: [] };
+  data.forEach((c) => { if (buckets[c.state]) buckets[c.state].push(c); });
+
+  const render = (id, countId, items) => {
+    document.getElementById(id).innerHTML = items.length
+      ? items.map(kanbanCardHtml).join("")
+      : `<div class="kanban-empty">Nothing here</div>`;
+    document.getElementById(countId).textContent = items.length;
+  };
+
+  render("kanbanPending", "kanbanPendingCount", buckets["pending"]);
+  render("kanbanAtRisk", "kanbanAtRiskCount", buckets["at-risk"]);
+  render("kanbanFulfilled", "kanbanFulfilledCount", buckets["fulfilled"]);
 }
 
 function selectChannel(channel) {
@@ -220,6 +258,80 @@ function wireNav() {
   document.getElementById("submitBtn").addEventListener("click", handleSubmitMessage);
   document.querySelectorAll(".channel-option").forEach((btn) => {
     btn.addEventListener("click", () => selectChannel(btn.dataset.channel));
+  });
+
+  // Event delegation for manual mark-fulfilled/undo buttons — these are
+  // added dynamically (via innerHTML in commitmentItemHtml), so a single
+  // listener on the document catches clicks on any of them, present or
+  // future, without re-binding per render.
+  document.addEventListener("click", async (e) => {
+    const btn = e.target.closest("[data-toggle-commitment]");
+    if (!btn) return;
+
+    const commitmentId = btn.dataset.commitmentId;
+    const currentState = btn.dataset.currentState;
+    const newState = currentState === "fulfilled" ? "pending" : "fulfilled";
+
+    btn.disabled = true;
+    try {
+      await updateCommitmentState(commitmentId, newState);
+      await Promise.all([fetchDigest(), fetchCommitments()]);
+    } catch (err) {
+      showError("Could not update commitment — is the backend running?");
+      btn.disabled = false;
+    }
+  });
+
+  // List/Board toggle for Commitments view
+  document.querySelectorAll("[data-commitments-view]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-commitments-view]").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      const isBoard = btn.dataset.commitmentsView === "board";
+      document.getElementById("commitmentsListWrapper").style.display = isBoard ? "none" : "block";
+      document.getElementById("commitmentsBoardWrapper").style.display = isBoard ? "block" : "none";
+    });
+  });
+
+  // Kanban drag-and-drop — event delegation since cards are rendered
+  // dynamically. At-risk is a read-only/computed dropzone (backend only
+  // allows pending<->fulfilled via manual override), so drops there are
+  // rejected rather than silently accepted.
+  document.addEventListener("dragstart", (e) => {
+    const card = e.target.closest("[data-kanban-card]");
+    if (!card) return;
+    e.dataTransfer.setData("text/commitment-id", card.dataset.commitmentId);
+    e.dataTransfer.setData("text/current-state", card.dataset.currentState);
+    card.classList.add("dragging");
+  });
+  document.addEventListener("dragend", (e) => {
+    const card = e.target.closest("[data-kanban-card]");
+    if (card) card.classList.remove("dragging");
+  });
+  document.querySelectorAll("[data-dropzone]").forEach((zone) => {
+    zone.addEventListener("dragover", (e) => {
+      if (zone.dataset.dropzone === "at-risk") return; // read-only, no drop allowed
+      e.preventDefault();
+      zone.classList.add("drag-over");
+    });
+    zone.addEventListener("dragleave", () => zone.classList.remove("drag-over"));
+    zone.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      zone.classList.remove("drag-over");
+      const targetState = zone.dataset.dropzone;
+      if (targetState === "at-risk") return; // computed automatically, not a manual target
+
+      const commitmentId = e.dataTransfer.getData("text/commitment-id");
+      const currentState = e.dataTransfer.getData("text/current-state");
+      if (!commitmentId || currentState === targetState) return;
+
+      try {
+        await updateCommitmentState(commitmentId, targetState);
+        await Promise.all([fetchDigest(), fetchCommitments()]);
+      } catch (err) {
+        showError("Could not move commitment — is the backend running?");
+      }
+    });
   });
 }
 
