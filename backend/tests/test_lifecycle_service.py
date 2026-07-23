@@ -140,3 +140,25 @@ def test_fabricated_commitment_id_is_rejected():
 
     with pytest.raises(ValueError, match="not in the set of open commitments"):
         tracker.check_for_resolution("Some message", open_commitments=[open_commitment])
+
+
+def test_naive_deadline_datetime_is_treated_as_utc():
+    """
+    The real bug this guards against: SQLite has no native timezone-aware
+    timestamp type, so a deadline stored as UTC comes back from the
+    database as a naive datetime (no tzinfo) on the next read. Before the
+    fix, subtracting this naive value from an aware `now` raised
+    TypeError, crashing every endpoint that lists commitments. This test
+    passes a genuinely naive datetime (simulating exactly what SQLite
+    hands back) and confirms it's treated as UTC rather than raising.
+    """
+    from datetime import datetime, timedelta, timezone
+    from uuid import uuid4
+
+    from app.services.lifecycle_service import check_deadline_proximity
+
+    naive_deadline_soon = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(hours=2)
+
+    result = check_deadline_proximity(uuid4(), naive_deadline_soon)
+
+    assert result.new_state.value == "at-risk"  # 2 hours < 24-hour threshold

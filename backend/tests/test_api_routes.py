@@ -410,3 +410,55 @@ def test_delete_commitment_soft_deletes(client):
 def test_delete_commitment_404_for_unknown(client):
     response = client.delete("/api/v1/commitments/does-not-exist")
     assert response.status_code == 404
+
+
+def test_manual_deadline_survives_db_roundtrip_without_crashing(client):
+    """
+    The actual end-to-end proof of the SQLite naive-datetime bug fix:
+    set a deadline via PATCH (stores it), then call GET /commitments
+    (which re-reads it from the DB and runs refresh_deadline_states).
+    Before the fix, this exact sequence crashed with a 500 error on the
+    second call — the deadline had already round-tripped through SQLite
+    and lost its timezone by the time it was compared against "now".
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="Something with a deadline.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-by-me", description="Something with a deadline",
+        state="pending",
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    soon = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    patch_response = client.patch(
+        f"/api/v1/commitments/{commitment.commitment_id}",
+        json={"inferred_deadline": soon},
+    )
+    assert patch_response.status_code == 200
+
+    # This second call is exactly where the bug crashed before the fix —
+    # it re-reads the just-stored deadline from the DB and runs the
+    # proximity check against it.
+    list_response = client.get("/api/v1/commitments")
+    assert list_response.status_code == 200
+    matching = [c for c in list_response.json()["data"] if c["commitment_id"] == commitment.commitment_id]
+    assert len(matching) == 1
+    assert matching[0]["state"] == "at-risk"  # 2 hours out, within the 24h threshold

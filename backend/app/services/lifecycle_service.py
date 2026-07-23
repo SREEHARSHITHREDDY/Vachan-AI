@@ -46,6 +46,16 @@ def check_deadline_proximity(
     Demo-scope state logic: pending stays pending until within
     AT_RISK_THRESHOLD_HOURS of its deadline, then becomes at-risk.
     No deadline -> stays pending indefinitely (nothing to be at-risk about).
+
+    inferred_deadline may arrive as a naive datetime (no tzinfo) even
+    though it was originally stored as UTC — SQLite has no native
+    timezone-aware timestamp type, so it silently strips tzinfo on the
+    round-trip through storage. Assuming naive == UTC and re-attaching
+    tzinfo here is what actually fixes this (rather than trying to force
+    SQLite to preserve something it fundamentally can't); every deadline
+    in this system is written as UTC in the first place (extraction sets
+    it from LLM output normalized to UTC; the manual-edit endpoint takes
+    a UTC ISO string from the frontend), so this assumption is safe.
     """
     now = now or datetime.now(timezone.utc)
 
@@ -55,6 +65,9 @@ def check_deadline_proximity(
             new_state=CommitmentState.PENDING,
             hours_until_deadline=None,
         )
+
+    if inferred_deadline.tzinfo is None:
+        inferred_deadline = inferred_deadline.replace(tzinfo=timezone.utc)
 
     hours_remaining = (inferred_deadline - now).total_seconds() / 3600
 
