@@ -703,3 +703,79 @@ body::before {
 @media (max-width: 900px) {
   .kanban-board { grid-template-columns: 1fr; }
 }
+
+/* ---------- Calendar View ---------- */
+
+.calendar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+.calendar-nav-btn {
+  background: var(--input-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 700;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.calendar-nav-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.calendar-weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.calendar-weekdays div {
+  text-align: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.calendar-cell {
+  min-height: 76px;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 6px;
+  background: var(--input-bg);
+}
+.calendar-cell-empty { background: transparent; border-color: transparent; }
+.calendar-cell-today { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.calendar-date { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+.calendar-cell-today .calendar-date { color: var(--accent); }
+
+.calendar-event {
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 4px;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--accent-glow);
+  color: var(--accent);
+}
+.calendar-event.badge-state-fulfilled { background: rgba(95,210,141,0.14); color: var(--fulfilled); }
+.calendar-event.badge-state-at-risk { background: rgba(240,168,87,0.14); color: var(--at-risk); }
+.calendar-more { font-size: 9px; color: var(--muted); }
+
+@media (max-width: 720px) {
+  .calendar-cell { min-height: 44px; padding: 3px; }
+  .calendar-event, .calendar-more { display: none; }
+}

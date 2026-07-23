@@ -34,6 +34,19 @@ class MessageIn(BaseModel):
     channel: Literal["message", "call", "in-person"] = "message"
 
 
+class CommitmentUpdate(BaseModel):
+    """
+    Manual override request body — lets the user mark a commitment
+    fulfilled (or move it back to pending) without needing a second
+    message to trigger the LLM cross-referencing check. This is a
+    deliberately narrow escape hatch: the AI-driven resolution (Lifecycle
+    Tracker) remains the primary mechanism; this exists for the cases
+    where a user just wants to say "I know this is done" directly.
+    """
+
+    state: Literal["pending", "fulfilled"]
+
+
 class CommitmentOut(BaseModel):
     commitment_id: str
     commitment_type: str

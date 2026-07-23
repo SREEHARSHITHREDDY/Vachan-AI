@@ -22,16 +22,19 @@
 
     <ul class="nav-list">
       <li class="nav-item active" data-view="digest">
-        <span class="nav-icon">📋</span><span class="label">Digest</span>
+        <span class="nav-icon">📋</span><span class="label">Overview</span>
       </li>
       <li class="nav-item" data-view="commitments">
         <span class="nav-icon">✅</span><span class="label">Commitments</span>
+      </li>
+      <li class="nav-item" data-view="board">
+        <span class="nav-icon">🗂️</span><span class="label">Board</span>
       </li>
       <li class="nav-item" data-view="contacts">
         <span class="nav-icon">👥</span><span class="label">Contacts</span><span class="soon-badge">Soon</span>
       </li>
       <li class="nav-item" data-view="actions">
-        <span class="nav-icon">📅</span><span class="label">Actions</span><span class="soon-badge">Soon</span>
+        <span class="nav-icon">📅</span><span class="label">Calendar</span>
       </li>
       <li class="nav-item" data-view="settings">
         <span class="nav-icon">⚙️</span><span class="label">Settings</span><span class="soon-badge">Soon</span>
@@ -71,7 +74,7 @@
       </div>
 
       <div class="card" data-animate>
-        <div class="section-title">Today's Digest</div>
+        <div class="section-title">Today's Overview</div>
         <div class="digest-row">
           <div class="digest-stat at-risk">
             <div class="stat-icon">⚠</div>
@@ -112,37 +115,33 @@
 
     <!-- Commitments view -->
     <section id="view-commitments" class="view">
-      <div class="view-toggle" data-animate>
-        <button class="view-toggle-btn active" data-commitments-view="list">List</button>
-        <button class="view-toggle-btn" data-commitments-view="board">Board</button>
-      </div>
-
-      <div class="card" id="commitmentsListWrapper" data-animate>
+      <div class="card" data-animate>
         <div class="section-title">All Commitments</div>
         <div id="commitmentsList"></div>
       </div>
+    </section>
 
-      <div id="commitmentsBoardWrapper" style="display:none;">
-        <div class="kanban-board">
-          <div class="kanban-column" data-column="pending">
-            <div class="kanban-column-header">
-              <span>Pending</span><span class="kanban-count" id="kanbanPendingCount">0</span>
-            </div>
-            <div class="kanban-dropzone" data-dropzone="pending" id="kanbanPending"></div>
+    <!-- Board view (Kanban) -->
+    <section id="view-board" class="view">
+      <div class="kanban-board" data-animate>
+        <div class="kanban-column" data-column="pending">
+          <div class="kanban-column-header">
+            <span>Pending</span><span class="kanban-count" id="kanbanPendingCount">0</span>
           </div>
-          <div class="kanban-column" data-column="at-risk">
-            <div class="kanban-column-header">
-              <span>At Risk</span><span class="kanban-count" id="kanbanAtRiskCount">0</span>
-              <span class="kanban-auto-label">auto</span>
-            </div>
-            <div class="kanban-dropzone kanban-dropzone-readonly" data-dropzone="at-risk" id="kanbanAtRisk"></div>
+          <div class="kanban-dropzone" data-dropzone="pending" id="kanbanPending"></div>
+        </div>
+        <div class="kanban-column" data-column="at-risk">
+          <div class="kanban-column-header">
+            <span>At Risk</span><span class="kanban-count" id="kanbanAtRiskCount">0</span>
+            <span class="kanban-auto-label">auto</span>
           </div>
-          <div class="kanban-column" data-column="fulfilled">
-            <div class="kanban-column-header">
-              <span>Fulfilled</span><span class="kanban-count" id="kanbanFulfilledCount">0</span>
-            </div>
-            <div class="kanban-dropzone" data-dropzone="fulfilled" id="kanbanFulfilled"></div>
+          <div class="kanban-dropzone kanban-dropzone-readonly" data-dropzone="at-risk" id="kanbanAtRisk"></div>
+        </div>
+        <div class="kanban-column" data-column="fulfilled">
+          <div class="kanban-column-header">
+            <span>Fulfilled</span><span class="kanban-count" id="kanbanFulfilledCount">0</span>
           </div>
+          <div class="kanban-dropzone" data-dropzone="fulfilled" id="kanbanFulfilled"></div>
         </div>
       </div>
     </section>
@@ -159,12 +158,21 @@
     </section>
 
     <section id="view-actions" class="view">
-      <div class="card">
-        <div class="coming-soon">
-          <div class="icon-large">📅</div>
-          <strong>Calendar Actions</strong>
-          <p>Planned for a later stage — confirmation-gated calendar/reminder integration.</p>
+      <div class="card" data-animate>
+        <div class="calendar-header">
+          <button class="calendar-nav-btn" id="calendarPrevBtn">‹</button>
+          <div class="section-title" id="calendarMonthLabel" style="margin-bottom:0;">Month</div>
+          <button class="calendar-nav-btn" id="calendarNextBtn">›</button>
         </div>
+        <div class="calendar-weekdays">
+          <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+        </div>
+        <div class="calendar-grid" id="calendarGrid"></div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">No Deadline Set</div>
+        <div id="calendarNoDeadlineList"></div>
       </div>
     </section>
 

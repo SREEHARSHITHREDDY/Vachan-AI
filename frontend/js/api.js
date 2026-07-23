@@ -32,3 +32,11 @@ export function postMessage(body, channel = "message") {
     body: JSON.stringify({ body, channel }),
   });
 }
+
+export function updateCommitmentState(commitmentId, state) {
+  return request(`/commitments/${commitmentId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ state }),
+  });
+}

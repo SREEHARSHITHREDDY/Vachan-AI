@@ -17,6 +17,13 @@ import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
 
 let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
+let calendarState = { year: new Date().getFullYear(), month: new Date().getMonth() };
+let calendarCommitmentsCache = [];
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
 
 // Selected input channel — message (typed text), call, or in-person.
 // The extraction/lifecycle mechanism processes all three identically;
@@ -47,6 +54,8 @@ function switchView(viewName) {
 
   if (viewName === "digest") { fetchDigest(); }
   if (viewName === "commitments") { fetchCommitments(); }
+  if (viewName === "board") { fetchBoard(); }
+  if (viewName === "actions") { fetchCalendar(); }
 }
 
 // ---------- Rendering helpers ----------
@@ -159,11 +168,76 @@ async function fetchCommitments() {
       ? data.map(commitmentItemHtml).join("")
       : `<div class="empty-state">No commitments tracked yet — submit a message to get started.</div>`;
     slideInList("#commitmentsList [data-commitment-item]");
-    renderKanbanBoard(data);
   } catch (err) {
     listEl.innerHTML = "";
     showError("Could not load commitments — is the backend running at localhost:8000?");
   }
+}
+
+async function fetchBoard() {
+  try {
+    const data = await getCommitments();
+    renderKanbanBoard(data);
+  } catch (err) {
+    showError("Could not load board — is the backend running at localhost:8000?");
+  }
+}
+
+async function fetchCalendar() {
+  try {
+    const data = await getCommitments();
+    calendarCommitmentsCache = data;
+    renderCalendarGrid();
+    renderNoDeadlineList(data);
+  } catch (err) {
+    showError("Could not load calendar — is the backend running at localhost:8000?");
+  }
+}
+
+function renderCalendarGrid() {
+  const { year, month } = calendarState;
+  document.getElementById("calendarMonthLabel").textContent = `${MONTH_NAMES[month]} ${year}`;
+
+  // Map deadline date (YYYY-MM-DD) -> commitments due that day, for O(1)
+  // lookup per cell instead of re-scanning the full list per day.
+  const byDate = {};
+  calendarCommitmentsCache.forEach((c) => {
+    if (!c.inferred_deadline) return;
+    const key = c.inferred_deadline.slice(0, 10);
+    (byDate[key] = byDate[key] || []).push(c);
+  });
+
+  const firstOfMonth = new Date(year, month, 1);
+  const startWeekday = firstOfMonth.getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const todayKey = new Date().toISOString().slice(0, 10);
+
+  let cellsHtml = "";
+  for (let i = 0; i < startWeekday; i++) {
+    cellsHtml += `<div class="calendar-cell calendar-cell-empty"></div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateKey = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const events = byDate[dateKey] || [];
+    const isToday = dateKey === todayKey;
+    cellsHtml += `
+      <div class="calendar-cell${isToday ? " calendar-cell-today" : ""}">
+        <div class="calendar-date">${day}</div>
+        ${events.slice(0, 3).map((c) => `<div class="calendar-event badge-state-${c.state}" title="${escapeHtml(c.description)}">${escapeHtml(c.description)}</div>`).join("")}
+        ${events.length > 3 ? `<div class="calendar-more">+${events.length - 3} more</div>` : ""}
+      </div>
+    `;
+  }
+
+  document.getElementById("calendarGrid").innerHTML = cellsHtml;
+}
+
+function renderNoDeadlineList(data) {
+  const el = document.getElementById("calendarNoDeadlineList");
+  const noDeadline = data.filter((c) => !c.inferred_deadline);
+  el.innerHTML = noDeadline.length
+    ? noDeadline.map(commitmentItemHtml).join("")
+    : `<div class="empty-state">Every tracked commitment has a deadline — nothing to show here.</div>`;
 }
 
 function kanbanCardHtml(c) {
@@ -239,7 +313,7 @@ async function handleSubmitMessage() {
     fadeInBanner(banner);
 
     input.value = "";
-    await Promise.all([fetchDigest(), fetchCommitments()]);
+    await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard()]);
   } catch (err) {
     showError("Failed to process — check the backend is running and GROQ_API_KEY is set.");
   } finally {
@@ -275,22 +349,23 @@ function wireNav() {
     btn.disabled = true;
     try {
       await updateCommitmentState(commitmentId, newState);
-      await Promise.all([fetchDigest(), fetchCommitments()]);
+      await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard()]);
     } catch (err) {
       showError("Could not update commitment — is the backend running?");
       btn.disabled = false;
     }
   });
 
-  // List/Board toggle for Commitments view
-  document.querySelectorAll("[data-commitments-view]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      document.querySelectorAll("[data-commitments-view]").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      const isBoard = btn.dataset.commitmentsView === "board";
-      document.getElementById("commitmentsListWrapper").style.display = isBoard ? "none" : "block";
-      document.getElementById("commitmentsBoardWrapper").style.display = isBoard ? "block" : "none";
-    });
+  // Calendar prev/next month navigation
+  document.getElementById("calendarPrevBtn")?.addEventListener("click", () => {
+    calendarState.month -= 1;
+    if (calendarState.month < 0) { calendarState.month = 11; calendarState.year -= 1; }
+    renderCalendarGrid();
+  });
+  document.getElementById("calendarNextBtn")?.addEventListener("click", () => {
+    calendarState.month += 1;
+    if (calendarState.month > 11) { calendarState.month = 0; calendarState.year += 1; }
+    renderCalendarGrid();
   });
 
   // Kanban drag-and-drop — event delegation since cards are rendered
@@ -327,7 +402,7 @@ function wireNav() {
 
       try {
         await updateCommitmentState(commitmentId, targetState);
-        await Promise.all([fetchDigest(), fetchCommitments()]);
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard()]);
       } catch (err) {
         showError("Could not move commitment — is the backend running?");
       }

@@ -6,12 +6,14 @@ built here — see Reconciliation Addendum Item 24 on right-sizing for a
 solo demo build.
 """
 
-from fastapi import APIRouter, Depends, Query
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
 from app.models.db_models import Commitment, Message
-from app.schemas.api import ApiResponse, CommitmentOut, DigestOut, MessageIn
+from app.schemas.api import ApiResponse, CommitmentOut, CommitmentUpdate, DigestOut, MessageIn
 from app.services.message_processor import (
     _get_demo_user_id,
     process_incoming_message,
@@ -103,3 +105,39 @@ def get_digest(db: Session = Depends(get_db)):
         upcoming_commitments=_to_commitment_out_list(db, pending),
     )
     return ApiResponse(data=digest.model_dump())
+
+
+@router.patch("/commitments/{commitment_id}", response_model=ApiResponse)
+def update_commitment(
+    commitment_id: str, payload: CommitmentUpdate, db: Session = Depends(get_db)
+):
+    """
+    Manual state override — see CommitmentUpdate's docstring for why this
+    exists alongside (not instead of) the AI-driven Lifecycle Tracker.
+
+    Scoped deliberately narrow for demo purposes: only pending<->fulfilled
+    transitions are allowed here (not at-risk, not arbitrary states) —
+    at-risk is a derived/computed state (see refresh_deadline_states),
+    not something a manual click should override, since it would just get
+    recalculated back on the next read anyway.
+    """
+    user_id = _get_demo_user_id(db)
+    commitment = (
+        db.query(Commitment)
+        .filter(
+            Commitment.commitment_id == commitment_id,
+            Commitment.user_id == user_id,
+            Commitment.is_deleted.is_(False),
+        )
+        .first()
+    )
+    if commitment is None:
+        raise HTTPException(status_code=404, detail="Commitment not found")
+
+    commitment.state = payload.state
+    commitment.resolved_at = datetime.now(timezone.utc) if payload.state == "fulfilled" else None
+    db.commit()
+    db.refresh(commitment)
+
+    out = _to_commitment_out_list(db, [commitment])[0]
+    return ApiResponse(data=out.model_dump())
