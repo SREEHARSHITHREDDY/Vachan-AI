@@ -71,8 +71,16 @@ class ExtractionResult(BaseModel):
         description="Short, extracted description of the commitment, e.g. "
         "'Send the project deck by Friday'.",
     )
+    inferred_start: Optional[datetime] = Field(
+        None,
+        description="Start of a date RANGE, if the message describes a window "
+        "rather than a single due-point (e.g. 'the submission window is Aug "
+        "13 to Aug 16'). Null for ordinary single-deadline commitments — most "
+        "commitments will leave this null even when inferred_deadline is set.",
+    )
     inferred_deadline: Optional[datetime] = Field(
-        None, description="Deadline inferred from message content, if any."
+        None, description="Deadline inferred from message content, if any. "
+        "When inferred_start is also set, this is the END of that range."
     )
     confidence: ConfidenceLevel = Field(
         ..., description="Model's self-reported confidence in this classification."
@@ -89,6 +97,7 @@ class CommitmentCreate(BaseModel):
     source_message_id: UUID
     commitment_type: CommitmentType
     description: str
+    starts_at: Optional[datetime] = None
     inferred_deadline: Optional[datetime] = None
     state: CommitmentState = CommitmentState.PENDING
 
@@ -103,6 +112,7 @@ class CommitmentRead(BaseModel):
     commitment_type: CommitmentType
     state: CommitmentState
     description: str
+    starts_at: Optional[datetime]
     inferred_deadline: Optional[datetime]
     created_at: datetime
     resolved_at: Optional[datetime]

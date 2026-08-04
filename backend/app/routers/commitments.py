@@ -137,6 +137,9 @@ def update_commitment(
     if payload.inferred_deadline is not None:
         commitment.inferred_deadline = payload.inferred_deadline
 
+    if payload.starts_at is not None:
+        commitment.starts_at = payload.starts_at
+
     db.commit()
     db.refresh(commitment)
 

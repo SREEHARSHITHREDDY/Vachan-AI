@@ -52,9 +52,16 @@ class CommitmentUpdate(BaseModel):
 
     Both fields are optional and independent: a request can update state
     only, deadline only, or both together in one call.
+
+    starts_at is the same kind of independent, optional field: setting it
+    alongside inferred_deadline turns a plain deadline into a date range
+    (e.g. a multi-day task window). Like inferred_deadline, only a
+    provided (non-null) value updates the row — this endpoint sets values,
+    it doesn't clear them back to null.
     """
 
     state: Optional[Literal["pending", "at-risk", "fulfilled"]] = None
+    starts_at: Optional[datetime] = None
     inferred_deadline: Optional[datetime] = None
 
 
@@ -63,6 +70,7 @@ class CommitmentOut(BaseModel):
     commitment_type: str
     state: str
     description: str
+    starts_at: Optional[datetime] = None
     inferred_deadline: Optional[datetime] = None
     created_at: datetime
     resolved_at: Optional[datetime] = None

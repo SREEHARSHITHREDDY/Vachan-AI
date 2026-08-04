@@ -31,21 +31,28 @@ function openCalendarAssignPanel(dateKey) {
   const panel = document.getElementById("calendarAssignPanel");
   const select = document.getElementById("calendarAssignSelect");
   const label = document.getElementById("calendarAssignLabel");
+  const startLabel = document.getElementById("calendarAssignStartLabel");
+  const startInput = document.getElementById("calendarAssignStartDateTime");
   const dateTimeInput = document.getElementById("calendarAssignDateTime");
 
   if (noDeadlineCommitments.length === 0) {
     label.textContent = `No commitments without a deadline to assign to ${dateKey}.`;
     select.style.display = "none";
+    startLabel.style.display = "none";
+    startInput.style.display = "none";
     dateTimeInput.style.display = "none";
     document.getElementById("calendarAssignSaveBtn").style.display = "none";
   } else {
-    label.textContent = `Assign a deadline on ${dateKey} to:`;
+    label.textContent = `Assign a deadline (or date range) on ${dateKey} to:`;
     select.style.display = "";
+    startLabel.style.display = "";
+    startInput.style.display = "";
     dateTimeInput.style.display = "";
     document.getElementById("calendarAssignSaveBtn").style.display = "";
     select.innerHTML = noDeadlineCommitments
       .map((c) => `<option value="${c.commitment_id}">${escapeHtml(c.description)}</option>`)
       .join("");
+    startInput.value = "";
     dateTimeInput.value = `${dateKey}T17:00`;
   }
 
@@ -58,8 +65,12 @@ function openCalendarEditPanel(commitmentId) {
   if (!commitment) return;
 
   const panel = document.getElementById("calendarAssignPanel");
-  document.getElementById("calendarAssignLabel").textContent = `Edit deadline — ${commitment.description}`;
+  document.getElementById("calendarAssignLabel").textContent = `Edit — ${commitment.description}`;
   document.getElementById("calendarAssignSelect").style.display = "none";
+  document.getElementById("calendarAssignStartLabel").style.display = "";
+  const startInput = document.getElementById("calendarAssignStartDateTime");
+  startInput.style.display = "";
+  startInput.value = toDatetimeLocalValue(commitment.starts_at);
   const dateTimeInput = document.getElementById("calendarAssignDateTime");
   dateTimeInput.style.display = "";
   dateTimeInput.value = toDatetimeLocalValue(commitment.inferred_deadline);
@@ -160,24 +171,32 @@ function actionButtonsHtml(c) {
   `;
 }
 
+function formatRange(startsAt, deadline) {
+  if (startsAt && deadline) return `📅 ${formatDate(startsAt)} → ${formatDate(deadline)}`;
+  if (deadline) return `📅 ${formatDate(deadline)}`;
+  return `📅 No deadline set`;
+}
+
 function deadlineRowHtml(c) {
-  const display = c.inferred_deadline
-    ? `📅 ${formatDate(c.inferred_deadline)}`
-    : `📅 No deadline set`;
+  const display = formatRange(c.starts_at, c.inferred_deadline);
   return `
-    <div class="deadline-row" data-deadline-row data-commitment-id="${c.commitment_id}" data-current-deadline="${c.inferred_deadline || ""}">
+    <div class="deadline-row" data-deadline-row data-commitment-id="${c.commitment_id}"
+         data-current-start="${c.starts_at || ""}" data-current-deadline="${c.inferred_deadline || ""}">
       <span class="deadline-display">${display}</span>
-      <button class="deadline-edit-btn" data-edit-deadline title="Set or edit deadline">Edit</button>
+      <button class="deadline-edit-btn" data-edit-deadline title="Set or edit date/date range">Edit</button>
     </div>
   `;
 }
 
 function startEditingDeadline(row) {
   if (!row) return;
-  const currentDeadline = row.dataset.currentDeadline;
-  const inputValue = toDatetimeLocalValue(currentDeadline);
+  const startValue = toDatetimeLocalValue(row.dataset.currentStart);
+  const endValue = toDatetimeLocalValue(row.dataset.currentDeadline);
   row.innerHTML = `
-    <input type="datetime-local" value="${inputValue}" class="deadline-input" />
+    <span class="deadline-input-label">From (optional)</span>
+    <input type="datetime-local" value="${startValue}" class="deadline-input" data-start-input />
+    <span class="deadline-input-label">To</span>
+    <input type="datetime-local" value="${endValue}" class="deadline-input" data-end-input />
     <button class="deadline-edit-btn deadline-save-btn" data-save-deadline>Save</button>
     <button class="deadline-edit-btn" data-cancel-deadline>Cancel</button>
   `;
@@ -185,11 +204,10 @@ function startEditingDeadline(row) {
 
 function cancelEditingDeadline(row) {
   if (!row) return;
-  const currentDeadline = row.dataset.currentDeadline;
-  const display = currentDeadline ? `📅 ${formatDate(currentDeadline)}` : `📅 No deadline set`;
+  const display = formatRange(row.dataset.currentStart, row.dataset.currentDeadline);
   row.innerHTML = `
     <span class="deadline-display">${display}</span>
-    <button class="deadline-edit-btn" data-edit-deadline title="Set or edit deadline">Edit</button>
+    <button class="deadline-edit-btn" data-edit-deadline title="Set or edit date/date range">Edit</button>
   `;
 }
 
@@ -297,17 +315,45 @@ async function fetchCalendar() {
   }
 }
 
+function dateRangeKeys(startIso, endIso) {
+  // Every YYYY-MM-DD key from startIso through endIso inclusive. Used so a
+  // ranged commitment (starts_at + inferred_deadline) shows up on EVERY
+  // day it spans, not just the final deadline day.
+  //
+  // Deliberately does UTC date math (Date.UTC / getUTC*), not local-time
+  // accessors — matching how the rest of this file keys calendar days
+  // (todayKey and the plain-deadline path both slice(0,10) off the raw
+  // UTC ISO string). Mixing local-time math in here would risk a ranged
+  // and non-ranged commitment landing on different cells for the same
+  // instant, depending on the browser's timezone offset.
+  const keys = [];
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  let cursor = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+  const endDay = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+  while (cursor <= endDay) {
+    keys.push(new Date(cursor).toISOString().slice(0, 10));
+    cursor += 24 * 60 * 60 * 1000;
+  }
+  return keys;
+}
+
 function renderCalendarGrid() {
   const { year, month } = calendarState;
   document.getElementById("calendarMonthLabel").textContent = `${MONTH_NAMES[month]} ${year}`;
 
-  // Map deadline date (YYYY-MM-DD) -> commitments due that day, for O(1)
-  // lookup per cell instead of re-scanning the full list per day.
+  // Map date (YYYY-MM-DD) -> commitments touching that day, for O(1)
+  // lookup per cell instead of re-scanning the full list per day. A
+  // ranged commitment (starts_at set) is added to EVERY day it spans;
+  // a plain deadline is added only to its single day, same as before.
   const byDate = {};
   calendarCommitmentsCache.forEach((c) => {
     if (!c.inferred_deadline) return;
-    const key = c.inferred_deadline.slice(0, 10);
-    (byDate[key] = byDate[key] || []).push(c);
+    const keys = c.starts_at ? dateRangeKeys(c.starts_at, c.inferred_deadline) : [c.inferred_deadline.slice(0, 10)];
+    keys.forEach((key, i) => {
+      const position = keys.length === 1 ? "single" : i === 0 ? "start" : i === keys.length - 1 ? "end" : "middle";
+      (byDate[key] = byDate[key] || []).push({ ...c, _rangePosition: position });
+    });
   });
 
   const firstOfMonth = new Date(year, month, 1);
@@ -326,7 +372,7 @@ function renderCalendarGrid() {
     cellsHtml += `
       <div class="calendar-cell${isToday ? " calendar-cell-today" : ""}" data-calendar-day data-date="${dateKey}">
         <div class="calendar-date">${day}</div>
-        ${events.slice(0, 3).map((c) => `<div class="calendar-event badge-state-${c.state}" data-calendar-event data-commitment-id="${c.commitment_id}" title="Click to edit — ${escapeHtml(c.description)}">${escapeHtml(c.description)}</div>`).join("")}
+        ${events.slice(0, 3).map((c) => `<div class="calendar-event calendar-event-${c._rangePosition} badge-state-${c.state}" data-calendar-event data-commitment-id="${c.commitment_id}" title="Click to edit — ${escapeHtml(c.description)}">${escapeHtml(c.description)}</div>`).join("")}
         ${events.length > 3 ? `<div class="calendar-more">+${events.length - 3} more</div>` : ""}
       </div>
     `;
@@ -350,7 +396,7 @@ function kanbanCardHtml(c) {
          data-commitment-id="${c.commitment_id}" data-current-state="${c.state}">
       <div class="kanban-card-desc">${escapeHtml(c.description)}</div>
       <div class="kanban-card-meta">${c.commitment_type}${channelLabel ? " · " + channelLabel : ""}</div>
-      ${c.inferred_deadline ? `<div class="kanban-card-deadline">📅 ${formatDate(c.inferred_deadline)}</div>` : ""}
+      ${c.inferred_deadline ? `<div class="kanban-card-deadline">${formatRange(c.starts_at, c.inferred_deadline)}</div>` : ""}
     </div>
   `;
 }
@@ -485,18 +531,22 @@ function wireNav() {
     const saveBtn = e.target.closest("[data-save-deadline]");
     if (saveBtn) {
       const row = saveBtn.closest("[data-deadline-row]");
-      const input = row.querySelector("input[type='datetime-local']");
+      const startInput = row.querySelector("[data-start-input]");
+      const endInput = row.querySelector("[data-end-input]");
       const commitmentId = row.dataset.commitmentId;
-      const value = input.value; // "YYYY-MM-DDTHH:mm", local time — the
-      // browser's datetime-local input has no timezone; new Date() parses
-      // it as local time, and .toISOString() converts to UTC for the
-      // backend's timezone-aware datetime field.
-      if (!value) return;
+      const endValue = endInput.value; // "YYYY-MM-DDTHH:mm", local time —
+      // the browser's datetime-local input has no timezone; new Date()
+      // parses it as local time, and .toISOString() converts to UTC for
+      // the backend's timezone-aware datetime field.
+      const startValue = startInput.value; // optional — a plain deadline
+      // (no range) is still the common case, so this can be left blank.
+      if (!endValue) return;
 
       saveBtn.disabled = true;
       try {
-        const isoUtc = new Date(value).toISOString();
-        await updateCommitment(commitmentId, { inferred_deadline: isoUtc });
+        const updates = { inferred_deadline: new Date(endValue).toISOString() };
+        if (startValue) updates.starts_at = new Date(startValue).toISOString();
+        await updateCommitment(commitmentId, updates);
         await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
       } catch (err) {
         showError("Could not update deadline — is the backend running?");
@@ -563,6 +613,7 @@ function wireNav() {
 
   document.getElementById("calendarAssignSaveBtn")?.addEventListener("click", async () => {
     const dateTimeInput = document.getElementById("calendarAssignDateTime");
+    const startInput = document.getElementById("calendarAssignStartDateTime");
     const value = dateTimeInput.value;
     if (!value) return;
 
@@ -575,8 +626,9 @@ function wireNav() {
     const saveBtn = document.getElementById("calendarAssignSaveBtn");
     saveBtn.disabled = true;
     try {
-      const isoUtc = new Date(value).toISOString();
-      await updateCommitment(commitmentId, { inferred_deadline: isoUtc });
+      const updates = { inferred_deadline: new Date(value).toISOString() };
+      if (startInput.value) updates.starts_at = new Date(startInput.value).toISOString();
+      await updateCommitment(commitmentId, updates);
       closeCalendarPanel();
       await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
     } catch (err) {

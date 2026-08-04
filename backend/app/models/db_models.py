@@ -104,6 +104,11 @@ class Commitment(Base):
     commitment_type: Mapped[str] = mapped_column(String(20), nullable=False)
     state: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
+    # starts_at is optional and paired with inferred_deadline: when both are
+    # set, the commitment represents a date RANGE (e.g. a multi-day task or
+    # event window) rather than a single due-point. inferred_deadline alone
+    # (starts_at=None) keeps working exactly as before for plain deadlines.
+    starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     inferred_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

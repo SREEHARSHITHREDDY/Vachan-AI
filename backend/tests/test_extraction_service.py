@@ -173,3 +173,47 @@ def test_live_precision_against_labeled_set(request, labeled_examples):
         f"Precision {precision:.1%} is below the 80% target "
         f"(Reconciliation Addendum Item 6 / AI Architecture 7.7)"
     )
+
+
+def test_extract_handles_date_range_response():
+    """
+    Confirms ExtractionResult accepts inferred_start alongside
+    inferred_deadline for date-range commitments (e.g. a multi-day
+    submission window), and that a response omitting inferred_start
+    entirely (ordinary single-deadline case) still validates fine —
+    the new field must be strictly additive, not a breaking change.
+    """
+    mock_client = MagicMock()
+    mock_client.get_structured_response.return_value = {
+        "is_commitment": True,
+        "commitment_type": "made-to-me",
+        "description": "Submit prototype during the Aug 13-16 window",
+        "inferred_start": "2026-08-13T12:00:00",
+        "inferred_deadline": "2026-08-16T23:59:00",
+        "confidence": "high",
+    }
+
+    service = ExtractionService(llm_client=mock_client)
+    result = service.extract("Submission window opens Aug 13, closes Aug 16.")
+
+    assert result.inferred_start is not None
+    assert result.inferred_deadline is not None
+    assert result.inferred_start < result.inferred_deadline
+
+
+def test_extract_defaults_inferred_start_to_none_when_omitted():
+    """Ordinary single-deadline responses (no inferred_start key at all)
+    must still validate — additive field, not a required one."""
+    mock_client = MagicMock()
+    mock_client.get_structured_response.return_value = {
+        "is_commitment": True,
+        "commitment_type": "made-by-me",
+        "description": "Send the deck by Friday",
+        "inferred_deadline": None,
+        "confidence": "high",
+    }
+
+    service = ExtractionService(llm_client=mock_client)
+    result = service.extract("I'll send the deck by Friday.")
+
+    assert result.inferred_start is None

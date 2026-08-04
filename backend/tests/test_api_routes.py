@@ -462,3 +462,87 @@ def test_manual_deadline_survives_db_roundtrip_without_crashing(client):
     matching = [c for c in list_response.json()["data"] if c["commitment_id"] == commitment.commitment_id]
     assert len(matching) == 1
     assert matching[0]["state"] == "at-risk"  # 2 hours out, within the 24h threshold
+
+
+def test_manual_starts_at_update(client):
+    """A date range can be set by providing both starts_at and
+    inferred_deadline via manual PATCH — independent of state."""
+    from datetime import datetime, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="Prototype submission window.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-to-me", description="Submit prototype",
+        state="pending",
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    response = client.patch(
+        f"/api/v1/commitments/{commitment.commitment_id}",
+        json={
+            "starts_at": "2026-08-13T12:00:00+00:00",
+            "inferred_deadline": "2026-08-16T23:59:00+00:00",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["starts_at"].startswith("2026-08-13T12:00:00")
+    assert data["inferred_deadline"].startswith("2026-08-16T23:59:00")
+
+
+def test_starts_at_survives_list_roundtrip(client):
+    """starts_at, like inferred_deadline before it, must round-trip
+    through SQLite (naive-datetime storage) without crashing the list
+    endpoint's refresh_deadline_states pass."""
+    from datetime import datetime, timezone
+
+    from app.models.db_models import Commitment, Message
+    from app.services.message_processor import _get_demo_user_id
+
+    db_gen = app.dependency_overrides[get_db]()
+    db = next(db_gen)
+    user_id = _get_demo_user_id(db)
+
+    message = Message(
+        user_id=user_id, channel="message", direction="outbound",
+        body_ref="Range test.", sent_at=datetime.now(timezone.utc),
+    )
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+
+    commitment = Commitment(
+        user_id=user_id, source_message_id=message.message_id,
+        commitment_type="made-to-me", description="Range test commitment",
+        state="pending",
+    )
+    db.add(commitment)
+    db.commit()
+    db.refresh(commitment)
+
+    client.patch(
+        f"/api/v1/commitments/{commitment.commitment_id}",
+        json={"starts_at": "2026-08-13T12:00:00+00:00", "inferred_deadline": "2026-08-16T23:59:00+00:00"},
+    )
+
+    list_response = client.get("/api/v1/commitments")
+    assert list_response.status_code == 200
+    matching = [c for c in list_response.json()["data"] if c["commitment_id"] == commitment.commitment_id]
+    assert len(matching) == 1
+    assert matching[0]["starts_at"] is not None

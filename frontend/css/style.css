@@ -865,3 +865,39 @@ body::before {
   padding: 4px 8px;
   max-width: 220px;
 }
+
+/* ---------- Date-range support: spanning calendar events + range inputs ---------- */
+
+/* A ranged commitment shows a pill on every day it spans. Rounding only
+   the outer corners of the start/end segments (and squaring the sides
+   that touch a neighboring day) gives the visual impression of one
+   continuous bar across the week, without needing absolute-positioned
+   overlays on top of the grid. */
+.calendar-event-start {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-right: -6px;
+  padding-right: 8px;
+}
+.calendar-event-middle {
+  border-radius: 0;
+  margin-left: -6px;
+  margin-right: -6px;
+  padding-left: 8px;
+  padding-right: 8px;
+  text-align: center;
+}
+.calendar-event-end {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -6px;
+  padding-left: 8px;
+}
+
+.deadline-input-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}

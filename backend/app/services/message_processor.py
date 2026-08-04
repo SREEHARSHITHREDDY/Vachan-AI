@@ -113,6 +113,7 @@ def process_incoming_message(
                 if hasattr(extraction.commitment_type, "value")
                 else extraction.commitment_type,
                 description=extraction.description,
+                starts_at=extraction.inferred_start,
                 inferred_deadline=extraction.inferred_deadline,
                 state="pending",
             )

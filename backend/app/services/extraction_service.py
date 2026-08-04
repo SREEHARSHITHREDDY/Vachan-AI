@@ -82,7 +82,8 @@ Respond with ONLY a JSON object, no other text, no markdown formatting:
   "is_commitment": true or false,
   "commitment_type": one of the four types above, or null if is_commitment is false,
   "description": a short (<15 word) description of the commitment, or null,
-  "inferred_deadline": an ISO 8601 datetime string if a deadline can be inferred, or null,
+  "inferred_start": an ISO 8601 datetime string ONLY if the message describes a date RANGE (a window with a clear start and end, e.g. "the submission window is Aug 13 to Aug 16"), or null. Leave this null for ordinary single-deadline commitments — most commitments should leave this null even when inferred_deadline is set.
+  "inferred_deadline": an ISO 8601 datetime string if a deadline can be inferred, or null. When inferred_start is also set, this is the END of that range.
   "confidence": "high", "medium", or "low"
 }"""
 
@@ -96,6 +97,7 @@ FEW_SHOT_EXAMPLES = [
             "is_commitment": True,
             "commitment_type": "made-by-me",
             "description": "Send the project deck by Friday evening",
+            "inferred_start": None,
             "inferred_deadline": None,  # left null in placeholder; real
             # examples should include a resolved ISO date
             "confidence": "high",
@@ -107,6 +109,7 @@ FEW_SHOT_EXAMPLES = [
             "is_commitment": False,
             "commitment_type": None,
             "description": None,
+            "inferred_start": None,
             "inferred_deadline": None,
             "confidence": "high",
         },
@@ -118,6 +121,7 @@ FEW_SHOT_EXAMPLES = [
             "is_commitment": True,
             "commitment_type": "conditional",
             "description": "Forward vendor quote once pricing is confirmed",
+            "inferred_start": None,
             "inferred_deadline": None,
             "confidence": "medium",
         },
@@ -128,8 +132,23 @@ FEW_SHOT_EXAMPLES = [
             "is_commitment": True,
             "commitment_type": "vague",
             "description": "Circle back after next week's demo",
+            "inferred_start": None,
             "inferred_deadline": None,
             "confidence": "medium",
+        },
+    },
+    {
+        "message": "Just a heads up — the submission window for the prototype "
+        "round opens August 13th at noon and closes August 16th at "
+        "11:59pm, so make sure it's in before then.",
+        "response": {
+            "is_commitment": True,
+            "commitment_type": "made-to-me",
+            "description": "Submit prototype during the Aug 13-16 window",
+            "inferred_start": None,  # real examples should include a
+            # resolved ISO date for the window's opening
+            "inferred_deadline": None,  # and here for the window's close
+            "confidence": "high",
         },
     },
 ]
