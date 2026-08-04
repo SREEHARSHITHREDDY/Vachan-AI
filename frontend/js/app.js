@@ -26,6 +26,22 @@ const MONTH_NAMES = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+function highlightSelectedDay(dateKey) {
+  // Gives the clicked day its own visible marker, distinct from the
+  // permanent "today" border — otherwise clicking a different date can
+  // look like nothing happened when today's cell already has a
+  // same-colored border for an unrelated reason.
+  document.querySelectorAll("[data-calendar-day].calendar-cell-selected")
+    .forEach((el) => el.classList.remove("calendar-cell-selected"));
+  const cell = document.querySelector(`[data-calendar-day][data-date="${dateKey}"]`);
+  if (cell) cell.classList.add("calendar-cell-selected");
+}
+
+function clearSelectedDay() {
+  document.querySelectorAll("[data-calendar-day].calendar-cell-selected")
+    .forEach((el) => el.classList.remove("calendar-cell-selected"));
+}
+
 function openCalendarAssignPanel(dateKey) {
   const noDeadlineCommitments = calendarCommitmentsCache.filter((c) => !c.inferred_deadline);
   const panel = document.getElementById("calendarAssignPanel");
@@ -34,6 +50,8 @@ function openCalendarAssignPanel(dateKey) {
   const startLabel = document.getElementById("calendarAssignStartLabel");
   const startInput = document.getElementById("calendarAssignStartDateTime");
   const dateTimeInput = document.getElementById("calendarAssignDateTime");
+
+  highlightSelectedDay(dateKey);
 
   if (noDeadlineCommitments.length === 0) {
     label.textContent = `No commitments without a deadline to assign to ${dateKey}.`;
@@ -64,6 +82,8 @@ function openCalendarEditPanel(commitmentId) {
   const commitment = calendarCommitmentsCache.find((c) => c.commitment_id === commitmentId);
   if (!commitment) return;
 
+  clearSelectedDay(); // editing an existing event, not picking a day cell
+
   const panel = document.getElementById("calendarAssignPanel");
   document.getElementById("calendarAssignLabel").textContent = `Edit — ${commitment.description}`;
   document.getElementById("calendarAssignSelect").style.display = "none";
@@ -83,6 +103,7 @@ function openCalendarEditPanel(commitmentId) {
 function closeCalendarPanel() {
   document.getElementById("calendarAssignPanel").style.display = "none";
   calendarPanelTarget = { mode: null, commitmentId: null, date: null };
+  clearSelectedDay();
 }
 
 

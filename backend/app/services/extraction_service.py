@@ -145,9 +145,8 @@ FEW_SHOT_EXAMPLES = [
             "is_commitment": True,
             "commitment_type": "made-to-me",
             "description": "Submit prototype during the Aug 13-16 window",
-            "inferred_start": None,  # real examples should include a
-            # resolved ISO date for the window's opening
-            "inferred_deadline": None,  # and here for the window's close
+            "inferred_start": "2026-08-13T12:00:00",
+            "inferred_deadline": "2026-08-16T23:59:00",
             "confidence": "high",
         },
     },
