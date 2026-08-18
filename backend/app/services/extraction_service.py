@@ -98,8 +98,7 @@ FEW_SHOT_EXAMPLES = [
             "commitment_type": "made-by-me",
             "description": "Send the project deck by Friday evening",
             "inferred_start": None,
-            "inferred_deadline": None,  # left null in placeholder; real
-            # examples should include a resolved ISO date
+            "inferred_deadline": None,  # reverted for testing
             "confidence": "high",
         },
     },

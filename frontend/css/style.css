@@ -749,6 +749,11 @@ body::before {
 }
 .calendar-cell {
   min-height: 76px;
+  min-width: 0; /* critical: without this, a grid item defaults to
+    min-width:auto, so a long nowrap .calendar-event pill (e.g. a
+    multi-word range description) forces its whole COLUMN wider than its
+    1fr share — and since every row shares the same 7 column tracks,
+    that steals width from unrelated cells in every other row too. */
   border: 1px solid var(--card-border);
   border-radius: 8px;
   padding: 6px;
