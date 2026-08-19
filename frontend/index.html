@@ -31,7 +31,7 @@
         <span class="nav-icon">🗂️</span><span class="label">Board</span>
       </li>
       <li class="nav-item" data-view="contacts">
-        <span class="nav-icon">👥</span><span class="label">Contacts</span><span class="soon-badge">Soon</span>
+        <span class="nav-icon">👥</span><span class="label">Contacts</span>
       </li>
       <li class="nav-item" data-view="actions">
         <span class="nav-icon">📅</span><span class="label">Calendar</span>
@@ -146,14 +146,28 @@
       </div>
     </section>
 
-    <!-- Coming-soon views — real nav items, honest about scope -->
+    <!-- Contacts view -->
     <section id="view-contacts" class="view">
-      <div class="card">
-        <div class="coming-soon">
-          <div class="icon-large">👥</div>
-          <strong>Contacts &amp; Relationship Scoring</strong>
-          <p>Planned for Phase 2 — see <code>docs/06_AI_Architecture.md</code> for the relationship decay scoring design.</p>
+      <div class="card" data-animate>
+        <div class="section-title">Add a Contact</div>
+        <div class="contact-form-row">
+          <input type="text" id="contactNameInput" placeholder="Name" class="contact-input" />
+          <input type="text" id="contactHandleInput" placeholder="Email or handle" class="contact-input" />
+          <select id="contactRoleSelect" class="contact-input">
+            <option value="friend">Friend</option>
+            <option value="professor">Professor</option>
+            <option value="recruiter">Recruiter</option>
+            <option value="teammate">Teammate</option>
+            <option value="family">Family</option>
+            <option value="other" selected>Other</option>
+          </select>
+          <button class="primary" id="addContactBtn">Add</button>
         </div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">All Contacts</div>
+        <div id="contactsList"></div>
       </div>
     </section>
 

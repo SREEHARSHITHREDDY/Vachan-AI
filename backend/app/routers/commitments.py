@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.models.database import get_db
-from app.models.db_models import Commitment, Message
+from app.models.db_models import Commitment, Contact, Message
 from app.schemas.api import ApiResponse, CommitmentOut, CommitmentUpdate, DigestOut, MessageIn
 from app.services.message_processor import (
     _get_demo_user_id,
@@ -25,12 +25,12 @@ router = APIRouter()
 
 def _to_commitment_out_list(db: Session, commitments: list[Commitment]) -> list[CommitmentOut]:
     """
-    Attaches each commitment's source channel (message/call/in-person) —
-    channel lives on Message, not Commitment (see CommitmentOut's
-    docstring), so this does one query for all the messages involved
-    rather than querying per-commitment (avoids N+1 at even modest scale,
-    while still being simple enough for demo scope — no need for a full
-    join/ORM relationship here).
+    Attaches each commitment's source channel (message/call/in-person) and
+    linked contact's name — neither lives directly on Commitment (channel
+    is on Message; the name is on Contact, only contact_id is on
+    Commitment) — so this does one query per lookup table for all the
+    commitments involved, rather than querying per-commitment (avoids N+1
+    at even modest scale, while still being simple enough for demo scope).
     """
     if not commitments:
         return []
@@ -42,10 +42,21 @@ def _to_commitment_out_list(db: Session, commitments: list[Commitment]) -> list[
         .all()
     )
 
+    contact_ids = [c.contact_id for c in commitments if c.contact_id]
+    name_by_contact_id = {}
+    if contact_ids:
+        name_by_contact_id = dict(
+            db.query(Contact.contact_id, Contact.name)
+            .filter(Contact.contact_id.in_(contact_ids))
+            .all()
+        )
+
     results = []
     for c in commitments:
         out = CommitmentOut.model_validate(c)
         out.channel = channel_by_message_id.get(c.source_message_id)
+        out.contact_id = c.contact_id
+        out.contact_name = name_by_contact_id.get(c.contact_id) if c.contact_id else None
         results.append(out)
     return results
 
@@ -139,6 +150,20 @@ def update_commitment(
 
     if payload.starts_at is not None:
         commitment.starts_at = payload.starts_at
+
+    if payload.contact_id is not None:
+        contact = (
+            db.query(Contact)
+            .filter(
+                Contact.contact_id == payload.contact_id,
+                Contact.user_id == user_id,
+                Contact.is_deleted.is_(False),
+            )
+            .first()
+        )
+        if contact is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+        commitment.contact_id = payload.contact_id
 
     db.commit()
     db.refresh(commitment)

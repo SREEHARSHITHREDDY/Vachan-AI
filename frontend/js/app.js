@@ -5,14 +5,14 @@
  *
  * Sidebar scope note: per the UI/UX design doc (docs/05_UIUX_Design.md,
  * Section 6.3), the full screen list includes Contacts, Actions, and
- * Settings — none of those have backend routes built yet (Stage 4 only
- * built Messages/Commitments/Digest). Rather than hide them, they're
- * shown as real nav items marked "Soon" and click through to an honest
- * coming-soon panel — consistent with how every other unbuilt piece in
- * this project has been documented rather than silently omitted.
+ * Settings. Contacts now has a real backend + UI (Phase 1); Settings
+ * remains an honest "Soon" panel — no backend route built for it yet.
  */
 
-import { getDigest, getCommitments, postMessage, updateCommitment, deleteCommitment } from "./api.js";
+import {
+  getDigest, getCommitments, postMessage, updateCommitment, deleteCommitment,
+  getContacts, createContact, updateContact, deleteContact,
+} from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
 
@@ -20,17 +20,21 @@ let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
 let calendarState = { year: new Date().getFullYear(), month: new Date().getMonth() };
 let calendarCommitmentsCache = [];
 let calendarPanelTarget = { mode: null, commitmentId: null, date: null };
+let contactsCache = []; // populated at init() so the contact-assign
+// dropdown on every commitment card is ready even before the user ever
+// opens the Contacts tab itself.
 
 const MONTH_NAMES = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
 ];
 
+const ROLE_TAG_EMOJI = {
+  friend: "🙂", professor: "🎓", recruiter: "💼",
+  teammate: "🤝", family: "👨‍👩‍👧", other: "👤",
+};
+
 function highlightSelectedDay(dateKey) {
-  // Gives the clicked day its own visible marker, distinct from the
-  // permanent "today" border — otherwise clicking a different date can
-  // look like nothing happened when today's cell already has a
-  // same-colored border for an unrelated reason.
   document.querySelectorAll("[data-calendar-day].calendar-cell-selected")
     .forEach((el) => el.classList.remove("calendar-cell-selected"));
   const cell = document.querySelector(`[data-calendar-day][data-date="${dateKey}"]`);
@@ -82,7 +86,7 @@ function openCalendarEditPanel(commitmentId) {
   const commitment = calendarCommitmentsCache.find((c) => c.commitment_id === commitmentId);
   if (!commitment) return;
 
-  clearSelectedDay(); // editing an existing event, not picking a day cell
+  clearSelectedDay();
 
   const panel = document.getElementById("calendarAssignPanel");
   document.getElementById("calendarAssignLabel").textContent = `Edit — ${commitment.description}`;
@@ -106,11 +110,6 @@ function closeCalendarPanel() {
   clearSelectedDay();
 }
 
-
-// Selected input channel — message (typed text), call, or in-person.
-// The extraction/lifecycle mechanism processes all three identically;
-// this only changes the hint text and gets tagged onto the saved
-// Message row so it's visible later in the commitments list.
 let selectedChannel = "message";
 
 const CHANNEL_HINTS = {
@@ -138,6 +137,7 @@ function switchView(viewName) {
   if (viewName === "commitments") { fetchCommitments(); }
   if (viewName === "board") { fetchBoard(); }
   if (viewName === "actions") { fetchCalendar(); }
+  if (viewName === "contacts") { fetchContacts(); }
 }
 
 // ---------- Rendering helpers ----------
@@ -185,7 +185,6 @@ function actionButtonsHtml(c) {
       <button class="mark-toggle-btn" data-toggle-commitment data-commitment-id="${id}" data-current-state="at-risk" title="Manually mark fulfilled">✓ Mark Done</button>
     `;
   }
-  // pending
   return `
     <button class="mark-toggle-btn" data-set-state="at-risk" data-commitment-id="${id}" title="Flag as at-risk even if the deadline math wouldn't yet">⚠ At Risk</button>
     <button class="mark-toggle-btn" data-toggle-commitment data-commitment-id="${id}" data-current-state="pending" title="Manually mark fulfilled">✓ Mark Done</button>
@@ -232,6 +231,18 @@ function cancelEditingDeadline(row) {
   `;
 }
 
+function contactAssignHtml(c) {
+  const options = contactsCache
+    .map((ct) => `<option value="${ct.contact_id}" ${ct.contact_id === c.contact_id ? "selected" : ""}>${ROLE_TAG_EMOJI[ct.role_tag] || "👤"} ${escapeHtml(ct.name)}</option>`)
+    .join("");
+  return `
+    <select class="contact-assign-select" data-assign-contact data-commitment-id="${c.commitment_id}" title="Link this commitment to a contact">
+      <option value="">No contact linked</option>
+      ${options}
+    </select>
+  `;
+}
+
 function commitmentItemHtml(c) {
   const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
   const channelPart = channelLabel ? ` · via ${channelLabel}` : "";
@@ -241,11 +252,26 @@ function commitmentItemHtml(c) {
         <div class="commitment-desc">${escapeHtml(c.description)}</div>
         <div class="commitment-meta">${c.commitment_type}${channelPart} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
         ${deadlineRowHtml(c)}
+        ${contactAssignHtml(c)}
       </div>
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         ${badgeHtml(c.state)}
         ${actionButtonsHtml(c)}
         <button class="delete-btn" data-delete-commitment data-commitment-id="${c.commitment_id}" title="Delete this commitment">🗑</button>
+      </div>
+    </div>
+  `;
+}
+
+function contactItemHtml(c) {
+  return `
+    <div class="commitment-item" data-contact-item>
+      <div style="flex:1;">
+        <div class="commitment-desc">${ROLE_TAG_EMOJI[c.role_tag] || "👤"} ${escapeHtml(c.name)}</div>
+        <div class="commitment-meta">${escapeHtml(c.email_or_handle)} · ${c.role_tag}</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <button class="delete-btn" data-delete-contact data-contact-id="${c.contact_id}" title="Delete this contact">🗑</button>
       </div>
     </div>
   `;
@@ -336,17 +362,31 @@ async function fetchCalendar() {
   }
 }
 
+async function fetchContactsCache() {
+  try {
+    contactsCache = await getContacts();
+  } catch (err) {
+    console.warn("Could not preload contacts:", err);
+  }
+}
+
+async function fetchContacts() {
+  const listEl = document.getElementById("contactsList");
+  listEl.innerHTML = skeletonCommitmentItems(2);
+
+  try {
+    contactsCache = await getContacts();
+    listEl.innerHTML = contactsCache.length
+      ? contactsCache.map(contactItemHtml).join("")
+      : `<div class="empty-state">No contacts yet — add the people you make and receive promises with.</div>`;
+    slideInList("#contactsList [data-contact-item]");
+  } catch (err) {
+    listEl.innerHTML = "";
+    showError("Could not load contacts — is the backend running at localhost:8000?");
+  }
+}
+
 function dateRangeKeys(startIso, endIso) {
-  // Every YYYY-MM-DD key from startIso through endIso inclusive. Used so a
-  // ranged commitment (starts_at + inferred_deadline) shows up on EVERY
-  // day it spans, not just the final deadline day.
-  //
-  // Deliberately does UTC date math (Date.UTC / getUTC*), not local-time
-  // accessors — matching how the rest of this file keys calendar days
-  // (todayKey and the plain-deadline path both slice(0,10) off the raw
-  // UTC ISO string). Mixing local-time math in here would risk a ranged
-  // and non-ranged commitment landing on different cells for the same
-  // instant, depending on the browser's timezone offset.
   const keys = [];
   const start = new Date(startIso);
   const end = new Date(endIso);
@@ -363,10 +403,6 @@ function renderCalendarGrid() {
   const { year, month } = calendarState;
   document.getElementById("calendarMonthLabel").textContent = `${MONTH_NAMES[month]} ${year}`;
 
-  // Map date (YYYY-MM-DD) -> commitments touching that day, for O(1)
-  // lookup per cell instead of re-scanning the full list per day. A
-  // ranged commitment (starts_at set) is added to EVERY day it spans;
-  // a plain deadline is added only to its single day, same as before.
   const byDate = {};
   calendarCommitmentsCache.forEach((c) => {
     if (!c.inferred_deadline) return;
@@ -416,7 +452,7 @@ function kanbanCardHtml(c) {
     <div class="kanban-card" draggable="true" data-kanban-card
          data-commitment-id="${c.commitment_id}" data-current-state="${c.state}">
       <div class="kanban-card-desc">${escapeHtml(c.description)}</div>
-      <div class="kanban-card-meta">${c.commitment_type}${channelLabel ? " · " + channelLabel : ""}</div>
+      <div class="kanban-card-meta">${c.commitment_type}${channelLabel ? " · " + channelLabel : ""}${c.contact_name ? " · " + escapeHtml(c.contact_name) : ""}</div>
       ${c.inferred_deadline ? `<div class="kanban-card-deadline">${formatRange(c.starts_at, c.inferred_deadline)}</div>` : ""}
     </div>
   `;
@@ -493,6 +529,33 @@ async function handleSubmitMessage() {
   }
 }
 
+async function handleAddContact() {
+  const nameInput = document.getElementById("contactNameInput");
+  const handleInput = document.getElementById("contactHandleInput");
+  const roleSelect = document.getElementById("contactRoleSelect");
+  const addBtn = document.getElementById("addContactBtn");
+
+  const name = nameInput.value.trim();
+  const handle = handleInput.value.trim();
+  if (!name || !handle) {
+    showError("A contact needs at least a name and an email or handle.");
+    return;
+  }
+
+  addBtn.disabled = true;
+  try {
+    await createContact(name, handle, roleSelect.value);
+    nameInput.value = "";
+    handleInput.value = "";
+    roleSelect.value = "other";
+    await fetchContacts();
+  } catch (err) {
+    showError("Could not add contact — is the backend running?");
+  } finally {
+    addBtn.disabled = false;
+  }
+}
+
 // ---------- Init ----------
 
 function wireNav() {
@@ -501,14 +564,11 @@ function wireNav() {
   });
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
   document.getElementById("submitBtn").addEventListener("click", handleSubmitMessage);
+  document.getElementById("addContactBtn")?.addEventListener("click", handleAddContact);
   document.querySelectorAll(".channel-option").forEach((btn) => {
     btn.addEventListener("click", () => selectChannel(btn.dataset.channel));
   });
 
-  // Event delegation for manual mark-fulfilled/undo buttons — these are
-  // added dynamically (via innerHTML in commitmentItemHtml), so a single
-  // listener on the document catches clicks on any of them, present or
-  // future, without re-binding per render.
   document.addEventListener("click", async (e) => {
     const toggleBtn = e.target.closest("[data-toggle-commitment]");
     if (toggleBtn) {
@@ -555,12 +615,8 @@ function wireNav() {
       const startInput = row.querySelector("[data-start-input]");
       const endInput = row.querySelector("[data-end-input]");
       const commitmentId = row.dataset.commitmentId;
-      const endValue = endInput.value; // "YYYY-MM-DDTHH:mm", local time —
-      // the browser's datetime-local input has no timezone; new Date()
-      // parses it as local time, and .toISOString() converts to UTC for
-      // the backend's timezone-aware datetime field.
-      const startValue = startInput.value; // optional — a plain deadline
-      // (no range) is still the common case, so this can be left blank.
+      const endValue = endInput.value;
+      const startValue = startInput.value;
       if (!endValue) return;
 
       saveBtn.disabled = true;
@@ -597,10 +653,45 @@ function wireNav() {
         showError("Could not delete commitment — is the backend running?");
         deleteBtn.disabled = false;
       }
+      return;
+    }
+
+    const deleteContactBtn = e.target.closest("[data-delete-contact]");
+    if (deleteContactBtn) {
+      const confirmed = window.confirm("Delete this contact? Commitments already linked to them will keep their history, just without a visible contact name.");
+      if (!confirmed) return;
+
+      const contactId = deleteContactBtn.dataset.contactId;
+      deleteContactBtn.disabled = true;
+      try {
+        await deleteContact(contactId);
+        await fetchContacts();
+      } catch (err) {
+        showError("Could not delete contact — is the backend running?");
+        deleteContactBtn.disabled = false;
+      }
     }
   });
 
-  // Calendar prev/next month navigation
+  document.addEventListener("change", async (e) => {
+    const assignSelect = e.target.closest("[data-assign-contact]");
+    if (!assignSelect) return;
+
+    const commitmentId = assignSelect.dataset.commitmentId;
+    const contactId = assignSelect.value;
+    if (!contactId) return;
+
+    assignSelect.disabled = true;
+    try {
+      await updateCommitment(commitmentId, { contact_id: contactId });
+      await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+    } catch (err) {
+      showError("Could not link contact — is the backend running?");
+    } finally {
+      assignSelect.disabled = false;
+    }
+  });
+
   document.getElementById("calendarPrevBtn")?.addEventListener("click", () => {
     calendarState.month -= 1;
     if (calendarState.month < 0) { calendarState.month = 11; calendarState.year -= 1; }
@@ -612,11 +703,6 @@ function wireNav() {
     renderCalendarGrid();
   });
 
-  // Calendar day/event clicks — event delegation since cells are rendered
-  // dynamically. Clicking an event pill opens edit mode for that specific
-  // commitment; clicking anywhere else in a day cell opens assign mode
-  // for that date (stopPropagation on the event pill prevents both
-  // firing at once).
   document.getElementById("calendarGrid")?.addEventListener("click", (e) => {
     const eventPill = e.target.closest("[data-calendar-event]");
     if (eventPill) {
@@ -659,10 +745,6 @@ function wireNav() {
     }
   });
 
-  // Kanban drag-and-drop — event delegation since cards are rendered
-  // dynamically. At-risk is a read-only/computed dropzone (backend only
-  // allows pending<->fulfilled via manual override), so drops there are
-  // rejected rather than silently accepted.
   document.addEventListener("dragstart", (e) => {
     const card = e.target.closest("[data-kanban-card]");
     if (!card) return;
@@ -676,7 +758,7 @@ function wireNav() {
   });
   document.querySelectorAll("[data-dropzone]").forEach((zone) => {
     zone.addEventListener("dragover", (e) => {
-      if (zone.dataset.dropzone === "at-risk") return; // read-only, no drop allowed
+      if (zone.dataset.dropzone === "at-risk") return;
       e.preventDefault();
       zone.classList.add("drag-over");
     });
@@ -685,7 +767,7 @@ function wireNav() {
       e.preventDefault();
       zone.classList.remove("drag-over");
       const targetState = zone.dataset.dropzone;
-      if (targetState === "at-risk") return; // computed automatically, not a manual target
+      if (targetState === "at-risk") return;
 
       const commitmentId = e.dataTransfer.getData("text/commitment-id");
       const currentState = e.dataTransfer.getData("text/current-state");
@@ -705,8 +787,8 @@ async function init() {
   initTheme();
   wireNav();
   selectChannel("message");
+  fetchContactsCache();
 
-  // Decorative layer — wrapped so a failure can never block the app.
   try {
     await initAnimations();
     fadeInStagger("[data-animate]");

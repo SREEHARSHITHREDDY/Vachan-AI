@@ -58,11 +58,17 @@ class CommitmentUpdate(BaseModel):
     (e.g. a multi-day task window). Like inferred_deadline, only a
     provided (non-null) value updates the row — this endpoint sets values,
     it doesn't clear them back to null.
+
+    contact_id links a commitment to a Contact row — same independent,
+    set-only pattern as the other fields. Passing a contact_id that
+    doesn't belong to the demo user (or doesn't exist) is rejected with a
+    404 by the router, not silently ignored.
     """
 
     state: Optional[Literal["pending", "at-risk", "fulfilled"]] = None
     starts_at: Optional[datetime] = None
     inferred_deadline: Optional[datetime] = None
+    contact_id: Optional[str] = None
 
 
 class CommitmentOut(BaseModel):
@@ -79,6 +85,10 @@ class CommitmentOut(BaseModel):
     # by model_validate() alone; see message_processor.py and the
     # commitments router for where it's actually filled in.
     channel: Optional[str] = None
+    # Same story as channel: contact_id lives directly on the row, but the
+    # human-readable name doesn't — it's populated by a join in the router.
+    contact_id: Optional[str] = None
+    contact_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -115,3 +125,37 @@ class ApiError(BaseModel):
 
     success: bool = False
     error: dict[str, str]
+
+
+# ---------------------------------------------------------------------------
+# Contacts — Phase 1 feature: contacts already existed at the data-model
+# level (Commitment.contact_id has always pointed at this table) but had
+# no CRUD surface until now.
+# ---------------------------------------------------------------------------
+
+ROLE_TAGS = Literal["friend", "professor", "recruiter", "teammate", "family", "other"]
+
+
+class ContactCreate(BaseModel):
+    name: str
+    email_or_handle: str
+    role_tag: ROLE_TAGS = "other"
+
+
+class ContactUpdate(BaseModel):
+    """Same set-only pattern as CommitmentUpdate — every field optional
+    and independent, only provided values get applied."""
+
+    name: Optional[str] = None
+    email_or_handle: Optional[str] = None
+    role_tag: Optional[ROLE_TAGS] = None
+
+
+class ContactOut(BaseModel):
+    contact_id: str
+    name: str
+    email_or_handle: str
+    role_tag: str
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
