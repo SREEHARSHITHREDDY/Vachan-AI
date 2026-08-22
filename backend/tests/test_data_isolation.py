@@ -10,13 +10,29 @@ experience it.
 
 from app.core.deps import get_current_user_id
 from app.main import app
+from app.models.database import get_db
 
 
 def _signup_and_get_headers(client, email, password="correcthorse123"):
-    response = client.post(
-        "/api/v1/auth/signup", json={"email": email, "password": password}
-    )
-    token = response.json()["access_token"]
+    """
+    Signs up, verifies (bypassing the real email click — same shortcut
+    test_auth.py uses, since clicking a real emailed link isn't something
+    a test can do), logs in, and returns a real Authorization header.
+    Signup itself no longer returns a token directly (verification-gated
+    login — see app/routers/auth.py), so this now takes the full real
+    path instead of the old one-step shortcut.
+    """
+    from app.models.db_models import User
+
+    client.post("/api/v1/auth/signup", json={"email": email, "password": password})
+
+    db = next(app.dependency_overrides[get_db]())
+    user = db.query(User).filter(User.email == email).first()
+    user.is_verified = True
+    db.commit()
+
+    login_response = client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    token = login_response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}
 
 

@@ -36,6 +36,14 @@ export function logout() {
 function showAuthError(message) {
   const el = document.getElementById("authError");
   el.textContent = message;
+  el.className = "auth-error";
+  el.style.display = "block";
+}
+
+function showAuthSuccess(message) {
+  const el = document.getElementById("authError");
+  el.textContent = message;
+  el.className = "auth-error auth-success";
   el.style.display = "block";
 }
 
@@ -97,12 +105,24 @@ async function handleSignup() {
   btn.disabled = true;
   btn.textContent = "Creating account...";
   try {
-    const data = await signup(email, password, persona);
-    localStorage.setItem(TOKEN_KEY, data.access_token);
-    localStorage.setItem(PERSONA_KEY, data.persona_mode);
-    window.location.reload();
+    await signup(email, password, persona);
+    // No auto-login anymore — signup no longer returns a session token.
+    // The account is created but unverified; the user must click the
+    // link emailed to them before /auth/login will accept their
+    // credentials at all.
+    //
+    // Order matters here: switchAuthTab() calls clearAuthError()
+    // internally, so it must run BEFORE showAuthSuccess(), not after —
+    // otherwise the success message would be cleared the instant it's
+    // shown.
+    switchAuthTab("login");
+    document.getElementById("loginEmail").value = email;
+    showAuthSuccess(
+      `Account created! Check ${email} for a verification link, then log in below.`
+    );
   } catch (err) {
     showAuthError(err.message || "Signup failed.");
+  } finally {
     btn.disabled = false;
     btn.textContent = "Create Account";
   }

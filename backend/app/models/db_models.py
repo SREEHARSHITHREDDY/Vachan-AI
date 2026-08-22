@@ -56,6 +56,14 @@ class User(Base):
     # via POST /auth/signup always gets a real hash — enforced by
     # SignupRequest requiring a password, not by this column.
     password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # False until the user clicks the emailed verification link. Login
+    # checks this and rejects unverified accounts — see app/routers/auth.py.
+    # Nullable-adjacent design note: NOT nullable, defaults True for the
+    # pre-existing demo user (created before verification existed, and
+    # tests/existing flows shouldn't suddenly need to verify a fixture
+    # account) — new real signups explicitly start False in the signup
+    # route itself, not via this column default.
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     persona_mode: Mapped[str] = mapped_column(String(20), default="student", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 

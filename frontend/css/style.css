@@ -1004,3 +1004,10 @@ body::before {
   color: #f05757;
   font-size: 12.5px;
 }
+
+/* Success variant of .auth-error, used for "check your email" messaging */
+.auth-success {
+  background: rgba(95,210,141,0.1) !important;
+  border-color: rgba(95,210,141,0.3) !important;
+  color: #5fd28d !important;
+}

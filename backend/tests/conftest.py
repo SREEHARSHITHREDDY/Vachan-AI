@@ -8,11 +8,12 @@ The `client` fixture also overrides the real auth dependency
 (get_current_user_id) to always resolve to a fixed demo user — this is
 what lets every test written BEFORE the auth layer existed keep passing
 completely unchanged: they never needed to know a login system was
-coming. Any NEW test that specifically needs to prove real per-user
-isolation removes this override for itself (see
-test_data_isolation.py) so real JWTs are actually checked for that one
-test, then it's restored automatically at teardown along with everything
-else in dependency_overrides.
+coming. Any test that calls signup makes a REAL email-send attempt unless
+mocked — mock_email below is autouse=True, so it protects every test
+file automatically (not just ones that remember to opt in), which
+matters a lot now that real SMTP credentials exist in .env: without
+this, running the suite would actually send real emails to fake
+addresses like alice@example.com on every test run.
 """
 import pytest
 from fastapi.testclient import TestClient
@@ -33,6 +34,21 @@ def pytest_addoption(parser):
         default=False,
         help="Run live LLM evaluation against the labeled test set (costs API credits).",
     )
+
+
+@pytest.fixture(autouse=True)
+def mock_email(monkeypatch):
+    """Replaces the real SMTP call with a no-op for every single test in
+    the whole suite — see module docstring for why this must be
+    universal, not opt-in per file."""
+    sent = {}
+
+    def fake_send(to_email, verification_link):
+        sent["to_email"] = to_email
+        sent["verification_link"] = verification_link
+
+    monkeypatch.setattr("app.routers.auth.send_verification_email", fake_send)
+    return sent
 
 
 @pytest.fixture

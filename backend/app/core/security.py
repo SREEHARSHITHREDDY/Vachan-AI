@@ -50,13 +50,36 @@ def verify_password(plain_password: str, password_hash: str) -> bool:
 
 def create_access_token(user_id: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRY_HOURS)
-    payload = {"sub": user_id, "exp": expire}
+    payload = {"sub": user_id, "exp": expire, "purpose": "access"}
     return jwt.encode(payload, get_settings().jwt_secret_key, algorithm=JWT_ALGORITHM)
 
 
 def decode_access_token(token: str) -> str:
-    """Returns the user_id from a valid token. Raises jwt exceptions
-    (ExpiredSignatureError, InvalidTokenError) on anything invalid —
-    callers (see get_current_user_id in deps.py) translate those into a 401."""
+    """Returns the user_id from a valid ACCESS token specifically —
+    rejects a verification token even if it's otherwise well-formed and
+    unexpired, so a leaked/logged verification link can never be replayed
+    as a login session."""
     payload = jwt.decode(token, get_settings().jwt_secret_key, algorithms=[JWT_ALGORITHM])
+    if payload.get("purpose") != "access":
+        raise jwt.InvalidTokenError("Not an access token")
+    return payload["sub"]
+
+
+VERIFICATION_TOKEN_EXPIRY_HOURS = 24
+
+
+def create_verification_token(user_id: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(hours=VERIFICATION_TOKEN_EXPIRY_HOURS)
+    payload = {"sub": user_id, "exp": expire, "purpose": "email_verification"}
+    return jwt.encode(payload, get_settings().jwt_secret_key, algorithm=JWT_ALGORITHM)
+
+
+def decode_verification_token(token: str) -> str:
+    """Returns the user_id from a valid verification token specifically —
+    rejects a regular access token here too, for the same reason in
+    reverse (a stolen session token shouldn't be able to (re-)verify an
+    arbitrary account)."""
+    payload = jwt.decode(token, get_settings().jwt_secret_key, algorithms=[JWT_ALGORITHM])
+    if payload.get("purpose") != "email_verification":
+        raise jwt.InvalidTokenError("Not a verification token")
     return payload["sub"]

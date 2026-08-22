@@ -45,6 +45,22 @@ class Settings(BaseSettings):
     # developer's own machine.
     jwt_secret_key: str = "insecure-dev-default-DO-NOT-USE-IN-PRODUCTION"
 
+    # Email verification — sent via Gmail SMTP using an app password (not
+    # the account's real password; see Google's app-password flow, which
+    # requires 2FA already be enabled on the sending account). Both
+    # default to empty string; email-sending code checks for that and
+    # fails loudly rather than silently pretending to send.
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+
+    # Base URL the verification link points back to — the backend itself,
+    # since /auth/verify-email is a backend route the user's email client
+    # opens directly (not a frontend route). Override in .env if the
+    # backend ever runs somewhere other than localhost:8000.
+    backend_base_url: str = "http://localhost:8000"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 
