@@ -15,6 +15,7 @@ import {
 } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
+import { initAuthScreen, logout } from "./auth.js";
 
 let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
 let calendarState = { year: new Date().getFullYear(), month: new Date().getMonth() };
@@ -784,8 +785,12 @@ function wireNav() {
 }
 
 async function init() {
+  const authenticated = initAuthScreen();
+  if (!authenticated) return; // auth screen is showing; nothing else should run yet
+
   initTheme();
   wireNav();
+  document.getElementById("logoutBtn")?.addEventListener("click", logout);
   selectChannel("message");
   fetchContactsCache();
 

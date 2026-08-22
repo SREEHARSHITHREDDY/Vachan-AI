@@ -38,6 +38,13 @@ class Settings(BaseSettings):
     extraction_max_tokens: int = 2000
     extraction_temperature: float = 0.0  # deterministic classification, not creative generation
 
+    # Auth — JWT signing secret for the login/signup layer. The fallback
+    # here exists only so a missing .env entry doesn't hard-crash local
+    # dev; it is NOT safe for anything beyond that, and must be
+    # overridden by a real value in .env for any use beyond a single
+    # developer's own machine.
+    jwt_secret_key: str = "insecure-dev-default-DO-NOT-USE-IN-PRODUCTION"
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

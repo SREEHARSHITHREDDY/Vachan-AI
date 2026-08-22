@@ -20,6 +20,11 @@ Soft-delete (is_deleted, deleted_at) is included on Contact and Commitment
 per Reconciliation Addendum Item 5 — NOT on Message, per that same item's
 reasoning (no business reason to soft-delete raw ingested messages
 independently of their parent user).
+
+password_hash was added to User for the new auth layer (Phase 2 groundwork,
+started early). Never store or log the plaintext password anywhere — see
+app/core/security.py for hashing. persona_mode already existed before auth
+did; it's now actually settable at signup instead of defaulting silently.
 """
 
 import uuid
@@ -44,6 +49,13 @@ class User(Base):
 
     user_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_new_uuid)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    # Nullable at the DB level ONLY because the pre-existing demo user
+    # (created by _get_demo_user_id in message_processor.py, used by the
+    # whole app and every existing test before auth existed) has no
+    # password and isn't going through signup. Every REAL account created
+    # via POST /auth/signup always gets a real hash — enforced by
+    # SignupRequest requiring a password, not by this column.
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     persona_mode: Mapped[str] = mapped_column(String(20), default="student", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
@@ -63,7 +75,6 @@ class Contact(Base):
     importance_weight: Mapped[float] = mapped_column(default=0.50, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
-    # Reconciliation Addendum Item 5: soft-delete, not hard-delete
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
@@ -80,8 +91,8 @@ class Message(Base):
     contact_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("contacts.contact_id"), nullable=True
     )
-    channel: Mapped[str] = mapped_column(String(20), nullable=False)  # 'gmail' | 'slack'
-    direction: Mapped[str] = mapped_column(String(10), nullable=False)  # 'inbound' | 'outbound'
+    channel: Mapped[str] = mapped_column(String(20), nullable=False)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False)
     body_ref: Mapped[str] = mapped_column(Text, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     ingested_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
@@ -104,16 +115,11 @@ class Commitment(Base):
     commitment_type: Mapped[str] = mapped_column(String(20), nullable=False)
     state: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    # starts_at is optional and paired with inferred_deadline: when both are
-    # set, the commitment represents a date RANGE (e.g. a multi-day task or
-    # event window) rather than a single due-point. inferred_deadline alone
-    # (starts_at=None) keeps working exactly as before for plain deadlines.
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     inferred_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    # Reconciliation Addendum Item 5: soft-delete, not hard-delete
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

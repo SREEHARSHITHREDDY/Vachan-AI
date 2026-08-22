@@ -951,3 +951,56 @@ body::before {
   max-width: 220px;
 }
 .contact-assign-select:focus { outline: none; border-color: var(--accent); color: var(--text); }
+
+/* ---------- Auth screen (login/signup) ---------- */
+
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg, #0d0f1a);
+}
+.auth-card {
+  width: 380px;
+  max-width: 90vw;
+  padding: 32px 28px;
+  border-radius: 14px;
+  background: var(--card-bg, #171a2b);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+}
+.auth-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  background: var(--input-bg);
+  border-radius: 10px;
+  padding: 4px;
+}
+.auth-tab {
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.auth-tab.active { background: var(--accent); color: #fff; }
+.auth-form { display: block; }
+.auth-error {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(240,87,87,0.1);
+  border: 1px solid rgba(240,87,87,0.3);
+  color: #f05757;
+  font-size: 12.5px;
+}

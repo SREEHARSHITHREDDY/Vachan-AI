@@ -83,3 +83,37 @@ export function updateContact(contactId, updates) {
 export function deleteContact(contactId) {
   return contactsRequest(`/contacts/${contactId}`, { method: "DELETE" });
 }
+
+// ---------- Auth (signup / login) ----------
+// Self-contained, same convention as the contacts addition — doesn't
+// depend on this file's existing internals.
+const AUTH_API_BASE = "http://localhost:8000/api/v1";
+
+async function authRequest(path, options = {}) {
+  const response = await fetch(`${AUTH_API_BASE}${path}`, options);
+  const json = await response.json();
+  if (response.status >= 400) {
+    // Auth errors come back as {"detail": "..."} (FastAPI's default
+    // HTTPException shape), not this app's usual {"success","error"}
+    // envelope — signup/login intentionally bypass that envelope since
+    // they're plain FastAPI routes, not wrapped in ApiResponse.
+    throw new Error(json.detail || "Request failed");
+  }
+  return json;
+}
+
+export function signup(email, password, personaMode) {
+  return authRequest("/auth/signup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password, persona_mode: personaMode }),
+  });
+}
+
+export function login(email, password) {
+  return authRequest("/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+}
