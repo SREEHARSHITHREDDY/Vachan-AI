@@ -1,9 +1,14 @@
 """
 API routes — Stage 4 demo scope only: submit a message, list commitments,
-get today's digest. Full production scope (auth, pagination, relationship
+get today's digest. Full production scope (pagination, relationship
 scoring, calendar actions) is documented in docs/04_API_Design.md but not
 built here — see Reconciliation Addendum Item 24 on right-sizing for a
 solo demo build.
+
+Per-user isolation update: every route now resolves the acting user via
+Depends(get_current_user_id) — the real, authenticated user from the JWT
+— instead of the old _get_demo_user_id(db) shared-single-user shortcut.
+Each user now only ever sees, creates, or modifies their own rows.
 """
 
 from datetime import datetime, timezone
@@ -11,14 +16,11 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from app.core.deps import get_current_user_id
 from app.models.database import get_db
 from app.models.db_models import Commitment, Contact, Message
 from app.schemas.api import ApiResponse, CommitmentOut, CommitmentUpdate, DigestOut, MessageIn
-from app.services.message_processor import (
-    _get_demo_user_id,
-    process_incoming_message,
-    refresh_deadline_states,
-)
+from app.services.message_processor import process_incoming_message, refresh_deadline_states
 
 router = APIRouter()
 
@@ -62,13 +64,18 @@ def _to_commitment_out_list(db: Session, commitments: list[Commitment]) -> list[
 
 
 @router.post("/messages", response_model=ApiResponse)
-def submit_message(payload: MessageIn, db: Session = Depends(get_db)):
+def submit_message(
+    payload: MessageIn,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
     """
     The core demo endpoint: submit a message, call, or in-person
     conversation, and the full closed loop (Extraction + Lifecycle
-    cross-referencing) runs against it for real.
+    cross-referencing) runs against it for real, scoped to the
+    authenticated user only.
     """
-    result = process_incoming_message(db, payload.body, payload.channel)
+    result = process_incoming_message(db, payload.body, user_id, payload.channel)
     return ApiResponse(data=result.model_dump())
 
 
@@ -76,8 +83,8 @@ def submit_message(payload: MessageIn, db: Session = Depends(get_db)):
 def list_commitments(
     state: str | None = Query(default=None),
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
-    user_id = _get_demo_user_id(db)
     refresh_deadline_states(db, user_id)
 
     query = db.query(Commitment).filter(
@@ -92,12 +99,14 @@ def list_commitments(
 
 
 @router.get("/digest/today", response_model=ApiResponse)
-def get_digest(db: Session = Depends(get_db)):
+def get_digest(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
     """
     Read-only summary (per UI/UX doc Section 6.2 — the digest is the entry
     point, not the raw commitment list).
     """
-    user_id = _get_demo_user_id(db)
     refresh_deadline_states(db, user_id)
 
     base = db.query(Commitment).filter(
@@ -120,7 +129,10 @@ def get_digest(db: Session = Depends(get_db)):
 
 @router.patch("/commitments/{commitment_id}", response_model=ApiResponse)
 def update_commitment(
-    commitment_id: str, payload: CommitmentUpdate, db: Session = Depends(get_db)
+    commitment_id: str,
+    payload: CommitmentUpdate,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ):
     """
     Manual override — see CommitmentUpdate's docstring for why this
@@ -128,7 +140,6 @@ def update_commitment(
     and why "at-risk" is now a valid manual target too, not just
     pending/fulfilled.
     """
-    user_id = _get_demo_user_id(db)
     commitment = (
         db.query(Commitment)
         .filter(
@@ -173,7 +184,11 @@ def update_commitment(
 
 
 @router.delete("/commitments/{commitment_id}", response_model=ApiResponse)
-def delete_commitment(commitment_id: str, db: Session = Depends(get_db)):
+def delete_commitment(
+    commitment_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
     """
     Soft-delete — sets is_deleted/deleted_at (columns that already
     existed on the model since Stage 3, per the Reconciliation Addendum's
@@ -181,7 +196,6 @@ def delete_commitment(commitment_id: str, db: Session = Depends(get_db)):
     history for anything that might reference it later (e.g. relationship
     scoring in a future phase), and matches how Contact soft-delete works.
     """
-    user_id = _get_demo_user_id(db)
     commitment = (
         db.query(Commitment)
         .filter(

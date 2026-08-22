@@ -2,7 +2,16 @@
 Tests for the auth layer — signup, login, and the /auth/me check.
 Uses the same shared `client` fixture from conftest.py as every other
 test file (real in-memory DB per test, real HTTP layer via TestClient).
+
+The /me tests below deliberately remove conftest.py's default auth
+override before running — that override exists so tests written before
+login existed don't need to know about auth at all, but /me's entire job
+IS to check real tokens, so testing it through the bypass would prove
+nothing about whether real token validation actually works.
 """
+
+from app.core.deps import get_current_user_id
+from app.main import app
 
 
 def test_signup_creates_user_and_returns_token(client):
@@ -53,7 +62,7 @@ def test_signup_rejects_short_password(client):
         "/api/v1/auth/signup",
         json={"email": "short@example.com", "password": "short"},
     )
-    assert response.status_code == 422  # pydantic min_length=8 validation
+    assert response.status_code == 422
 
 
 def test_login_with_correct_credentials(client):
@@ -90,8 +99,6 @@ def test_login_with_unknown_email_rejected(client):
 
 
 def test_login_error_message_identical_for_unknown_email_and_wrong_password(client):
-    """Guards against user enumeration — see the router's own comment on
-    why this specific behavior matters."""
     client.post(
         "/api/v1/auth/signup",
         json={"email": "enum@example.com", "password": "correcthorse123"},
@@ -106,6 +113,8 @@ def test_login_error_message_identical_for_unknown_email_and_wrong_password(clie
 
 
 def test_me_returns_user_info_with_valid_token(client):
+    del app.dependency_overrides[get_current_user_id]
+
     signup_resp = client.post(
         "/api/v1/auth/signup",
         json={"email": "me@example.com", "password": "correcthorse123", "persona_mode": "business"},
@@ -120,21 +129,23 @@ def test_me_returns_user_info_with_valid_token(client):
 
 
 def test_me_without_token_rejected(client):
+    del app.dependency_overrides[get_current_user_id]
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
 
 
 def test_me_with_garbage_token_rejected(client):
+    del app.dependency_overrides[get_current_user_id]
     response = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer not-a-real-token"})
     assert response.status_code == 401
 
 
 def test_me_with_malformed_header_rejected(client):
+    del app.dependency_overrides[get_current_user_id]
     signup_resp = client.post(
         "/api/v1/auth/signup",
         json={"email": "malformed@example.com", "password": "correcthorse123"},
     )
     token = signup_resp.json()["access_token"]
-    # Missing "Bearer " prefix
     response = client.get("/api/v1/auth/me", headers={"Authorization": token})
     assert response.status_code == 401

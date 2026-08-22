@@ -4,11 +4,15 @@ Shared pytest configuration and fixtures.
 pytest_addoption MUST live in conftest.py — pytest does not pick up custom
 CLI options declared inside a regular test module.
 
-The `client` fixture also lives here (moved from test_api_routes.py) so
-every test file can use it, not just the one it was originally written
-in — test_contacts.py needs the exact same real-HTTP-layer, in-memory-DB
-setup and there's no reason for two files to maintain separate copies of
-it that could quietly drift out of sync with each other.
+The `client` fixture also overrides the real auth dependency
+(get_current_user_id) to always resolve to a fixed demo user — this is
+what lets every test written BEFORE the auth layer existed keep passing
+completely unchanged: they never needed to know a login system was
+coming. Any NEW test that specifically needs to prove real per-user
+isolation removes this override for itself (see
+test_data_isolation.py) so real JWTs are actually checked for that one
+test, then it's restored automatically at teardown along with everything
+else in dependency_overrides.
 """
 import pytest
 from fastapi.testclient import TestClient
@@ -16,8 +20,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.deps import get_current_user_id
 from app.main import app
 from app.models.database import Base, get_db
+from app.services.message_processor import _get_demo_user_id
 
 
 def pytest_addoption(parser):
@@ -58,5 +64,12 @@ def client():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+
+    # Default auth override — see module docstring for why this exists.
+    db_gen = override_get_db()
+    db = next(db_gen)
+    demo_user_id = _get_demo_user_id(db)
+    app.dependency_overrides[get_current_user_id] = lambda: demo_user_id
+
     yield TestClient(app)
     app.dependency_overrides.clear()

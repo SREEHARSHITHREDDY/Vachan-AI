@@ -3,15 +3,32 @@
  * JSON, throws on non-success responses. No DOM logic here at all
  * (kept separate from app.js) so the API contract is testable/reusable
  * independent of how it's rendered.
+ *
+ * Per-user isolation update: every commitments/contacts request now
+ * attaches the logged-in user's JWT as an Authorization header, read
+ * directly from localStorage (same key auth.js writes to). This file
+ * intentionally does NOT import from auth.js — auth.js already imports
+ * signup/login FROM this file, and a two-way import between them would
+ * be a circular dependency. Duplicating just the one storage key name
+ * is a small, safe price for avoiding that.
  */
 
 const API_BASE = "http://localhost:8000/api/v1";
+const TOKEN_KEY = "vachanai_token";
+
+function authHeaders() {
+  const token = localStorage.getItem(TOKEN_KEY);
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function request(path, options = {}) {
-  const res = await fetch(`${API_BASE}${path}`, options);
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers || {}) },
+  });
   const json = await res.json();
   if (!json.success) {
-    throw new Error(json.error?.message || `Request to ${path} failed`);
+    throw new Error(json.error?.message || json.detail || `Request to ${path} failed`);
   }
   return json.data;
 }
@@ -34,7 +51,6 @@ export function postMessage(body, channel = "message") {
 }
 
 export function updateCommitment(commitmentId, updates) {
-  // updates: { state?: "pending"|"at-risk"|"fulfilled", inferred_deadline?: ISO string }
   return request(`/commitments/${commitmentId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -48,24 +64,15 @@ export function deleteCommitment(commitmentId) {
 
 
 // ---------- Contacts (Phase 1 feature) ----------
-// Self-contained (doesn't reuse any internal helper from above) so this
-// append is safe regardless of this file's existing implementation
-// details — same API_BASE convention as the rest of this file.
-const CONTACTS_API_BASE = "http://localhost:8000/api/v1";
-
-async function contactsRequest(path, options = {}) {
-  const response = await fetch(`${CONTACTS_API_BASE}${path}`, options);
-  const json = await response.json();
-  if (!json.success) throw new Error(json.error?.message || "Request failed");
-  return json.data;
-}
+// Now shares the same authHeaders() helper as the rest of this file —
+// contacts are per-user too, same as commitments.
 
 export function getContacts() {
-  return contactsRequest("/contacts");
+  return request("/contacts");
 }
 
 export function createContact(name, emailOrHandle, roleTag) {
-  return contactsRequest("/contacts", {
+  return request("/contacts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, email_or_handle: emailOrHandle, role_tag: roleTag }),
@@ -73,7 +80,7 @@ export function createContact(name, emailOrHandle, roleTag) {
 }
 
 export function updateContact(contactId, updates) {
-  return contactsRequest(`/contacts/${contactId}`, {
+  return request(`/contacts/${contactId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(updates),
@@ -81,22 +88,20 @@ export function updateContact(contactId, updates) {
 }
 
 export function deleteContact(contactId) {
-  return contactsRequest(`/contacts/${contactId}`, { method: "DELETE" });
+  return request(`/contacts/${contactId}`, { method: "DELETE" });
 }
 
 // ---------- Auth (signup / login) ----------
-// Self-contained, same convention as the contacts addition — doesn't
-// depend on this file's existing internals.
-const AUTH_API_BASE = "http://localhost:8000/api/v1";
+// Deliberately does NOT attach an Authorization header — signup and
+// login are the only two calls a user makes before they have a token at
+// all. Kept on its own request helper (not the shared one above) for
+// exactly that reason, and because its error shape is different (plain
+// FastAPI {"detail": "..."}, not this app's {"success","error"} envelope).
 
 async function authRequest(path, options = {}) {
-  const response = await fetch(`${AUTH_API_BASE}${path}`, options);
+  const response = await fetch(`${API_BASE}${path}`, options);
   const json = await response.json();
   if (response.status >= 400) {
-    // Auth errors come back as {"detail": "..."} (FastAPI's default
-    // HTTPException shape), not this app's usual {"success","error"}
-    // envelope — signup/login intentionally bypass that envelope since
-    // they're plain FastAPI routes, not wrapped in ApiResponse.
     throw new Error(json.detail || "Request failed");
   }
   return json;

@@ -23,37 +23,9 @@ from app.main import app
 from app.models.database import Base, get_db
 
 
-@pytest.fixture
-def client():
-    """
-    Fresh in-memory SQLite DB per test, wired into the FastAPI app via
-    dependency override — standard FastAPI testing pattern.
-
-    StaticPool is required here: sqlite:///:memory: creates a NEW, empty
-    database per connection by default, so without forcing a single shared
-    connection, different requests/sessions during the test would each see
-    a table-less database (observed as "no such table: users" before this
-    fix — each TestClient request was landing on a different in-memory DB
-    than the one create_all() populated).
-    """
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(bind=engine)
-    TestingSessionLocal = sessionmaker(bind=engine)
-
-    def override_get_db():
-        db = TestingSessionLocal()
-        try:
-            yield db
-        finally:
-            db.close()
-
-    app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+# client fixture now lives in conftest.py (shared across test files) —
+# removed from here so this file uses that shared version instead of
+# shadowing it with its own auth-unaware copy.
 
 
 def test_health_check(client):

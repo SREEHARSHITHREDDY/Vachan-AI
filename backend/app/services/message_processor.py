@@ -9,6 +9,14 @@ Deliberately a plain function-based service, not a class with lots of
 state — per Reconciliation Addendum Item 24 (avoid over-building solo-dev
 infrastructure), a stateless orchestration function is all this needs to
 be at demo scale.
+
+Per-user isolation update: process_incoming_message and
+refresh_deadline_states now REQUIRE a user_id argument rather than
+resolving one internally — the real, authenticated user (from the JWT,
+via app.core.deps.get_current_user_id) now flows in from the router layer
+instead. _get_demo_user_id is kept below, unchanged, purely as a test
+fixture helper (existing tests create setup data against it directly) —
+it is no longer called anywhere in the actual request-handling path.
 """
 
 from datetime import datetime, timezone
@@ -25,9 +33,12 @@ from app.services.lifecycle_service import LifecycleTracker, check_deadline_prox
 
 def _get_demo_user_id(db: Session) -> str:
     """
-    Demo scope has no auth (per the API Design doc's Stage 4 scoping —
-    auth is a later-stage concern). All messages/commitments belong to a
-    single fixed demo user, auto-created on first use.
+    TEST/FIXTURE HELPER ONLY as of the auth refactor — no longer called
+    by the actual request-handling path (see module docstring). Kept
+    because every existing test creates its setup rows (messages,
+    commitments, contacts) against this fixed demo user, and rewriting
+    all of them to sign up/log in a real account just to attach test
+    fixtures would be pure churn with no real benefit.
     """
     from app.models.db_models import User
 
@@ -41,19 +52,20 @@ def _get_demo_user_id(db: Session) -> str:
 
 
 def process_incoming_message(
-    db: Session, body: str, channel: str = "message"
+    db: Session, body: str, user_id: str, channel: str = "message"
 ) -> MessageProcessResult:
     """
-    The full closed loop, run for real against the database for the first
-    time: save the message, check if it resolves any open commitment,
-    check if it contains a new commitment, persist whichever apply.
+    The full closed loop, run for real against the database: save the
+    message, check if it resolves any open commitment, check if it
+    contains a new commitment, persist whichever apply.
+
+    user_id is now always the real authenticated user (passed in by the
+    router from the JWT), not resolved internally — see module docstring.
 
     channel: "message" (typed text/email), "call", or "in-person" — see
     MessageIn's docstring (schemas/api.py) for why this distinction exists
     and what it does/doesn't change about how the pipeline processes it.
     """
-    user_id = _get_demo_user_id(db)
-
     message = Message(
         user_id=user_id,
         channel=channel,
@@ -67,7 +79,6 @@ def process_incoming_message(
 
     result = MessageProcessResult()
 
-    # Step 1: does this message resolve any currently open commitment?
     open_commitments = (
         db.query(Commitment)
         .filter(
@@ -99,9 +110,8 @@ def process_incoming_message(
             result.resolved_commitment_id = matched.commitment_id
             result.resolution_reasoning = resolution.reasoning
 
-    # Step 2: does this message itself contain a new commitment?
     settings = get_settings()
-    if settings.groq_api_key:  # skip gracefully if no key configured yet
+    if settings.groq_api_key:
         extractor = ExtractionService()
         extraction = extractor.extract(body)
 
@@ -121,9 +131,6 @@ def process_incoming_message(
             db.commit()
             db.refresh(new_commitment)
             result.new_commitment = CommitmentOut.model_validate(new_commitment)
-            # channel lives on Message, not Commitment (see CommitmentOut's
-            # docstring) — set it here since we already know it, rather
-            # than requiring the caller to look it up again.
             result.new_commitment.channel = channel
 
     return result
