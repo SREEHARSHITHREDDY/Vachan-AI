@@ -122,3 +122,34 @@ export function login(email, password) {
     body: JSON.stringify({ email, password }),
   });
 }
+
+// getMe/updateMe use the SHARED authenticated `request()` helper (not
+// authRequest) — unlike signup/login, these need the Authorization
+// header attached, and use this app's normal {"success","error"}
+// response envelope since they go through commitments.py/contacts.py's
+// same ApiResponse pattern... actually /auth/me returns plain FastAPI
+// JSON (UserOut directly), not the ApiResponse envelope — so these use
+// a small dedicated helper instead of either existing one.
+async function meRequest(path, options = {}) {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: { ...authHeaders(), ...(options.headers || {}) },
+  });
+  const json = await response.json();
+  if (response.status >= 400) {
+    throw new Error(json.detail || "Request failed");
+  }
+  return json;
+}
+
+export function getMe() {
+  return meRequest("/auth/me");
+}
+
+export function updateMe(updates) {
+  return meRequest("/auth/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+}

@@ -12,6 +12,7 @@
 import {
   getDigest, getCommitments, postMessage, updateCommitment, deleteCommitment,
   getContacts, createContact, updateContact, deleteContact,
+  getMe, updateMe,
 } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
@@ -139,6 +140,7 @@ function switchView(viewName) {
   if (viewName === "board") { fetchBoard(); }
   if (viewName === "actions") { fetchCalendar(); }
   if (viewName === "contacts") { fetchContacts(); }
+  if (viewName === "settings") { fetchSettings(); }
 }
 
 // ---------- Rendering helpers ----------
@@ -387,6 +389,18 @@ async function fetchContacts() {
   }
 }
 
+async function fetchSettings() {
+  try {
+    const me = await getMe();
+    document.getElementById("settingsEmail").textContent = me.email;
+    document.getElementById("settingsVerified").textContent = me.is_verified ? "✓ Verified" : "Not verified";
+    document.getElementById("settingsCreatedAt").textContent = formatDate(me.created_at);
+    document.getElementById("settingsPersonaSelect").value = me.persona_mode;
+  } catch (err) {
+    showError("Could not load account settings — is the backend running at localhost:8000?");
+  }
+}
+
 function dateRangeKeys(startIso, endIso) {
   const keys = [];
   const start = new Date(startIso);
@@ -557,6 +571,25 @@ async function handleAddContact() {
   }
 }
 
+async function handleSavePersona() {
+  const select = document.getElementById("settingsPersonaSelect");
+  const btn = document.getElementById("settingsPersonaSaveBtn");
+  const statusEl = document.getElementById("settingsPersonaStatus");
+  statusEl.style.display = "none";
+
+  btn.disabled = true;
+  try {
+    await updateMe({ persona_mode: select.value });
+    statusEl.textContent = "Saved.";
+    statusEl.style.display = "block";
+    setTimeout(() => { statusEl.style.display = "none"; }, 3000);
+  } catch (err) {
+    showError("Could not save persona — is the backend running?");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ---------- Init ----------
 
 function wireNav() {
@@ -566,6 +599,8 @@ function wireNav() {
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
   document.getElementById("submitBtn").addEventListener("click", handleSubmitMessage);
   document.getElementById("addContactBtn")?.addEventListener("click", handleAddContact);
+  document.getElementById("settingsPersonaSaveBtn")?.addEventListener("click", handleSavePersona);
+  document.getElementById("settingsLogoutBtn")?.addEventListener("click", logout);
   document.querySelectorAll(".channel-option").forEach((btn) => {
     btn.addEventListener("click", () => selectChannel(btn.dataset.channel));
   });

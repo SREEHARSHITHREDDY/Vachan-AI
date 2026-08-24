@@ -50,3 +50,11 @@ class UserOut(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UpdateMeRequest(BaseModel):
+    """Set-only, same pattern as CommitmentUpdate/ContactUpdate — only
+    persona_mode is changeable right now; see the router's own docstring
+    for why email/password aren't (yet)."""
+
+    persona_mode: Optional[PersonaMode] = None

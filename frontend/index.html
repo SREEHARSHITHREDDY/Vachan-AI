@@ -77,7 +77,7 @@
         <span class="nav-icon">📅</span><span class="label">Calendar</span>
       </li>
       <li class="nav-item" data-view="settings">
-        <span class="nav-icon">⚙️</span><span class="label">Settings</span><span class="soon-badge">Soon</span>
+        <span class="nav-icon">⚙️</span><span class="label">Settings</span>
       </li>
     </ul>
 
@@ -244,12 +244,44 @@
     </section>
 
     <section id="view-settings" class="view">
-      <div class="card">
-        <div class="coming-soon">
-          <div class="icon-large">⚙️</div>
-          <strong>Settings</strong>
-          <p>Persona mode, connected accounts, and contact importance weights — planned for Phase 2.</p>
+      <div class="card" data-animate>
+        <div class="section-title">Account</div>
+        <div class="settings-row">
+          <div class="settings-label">Email</div>
+          <div class="settings-value" id="settingsEmail">—</div>
         </div>
+        <div class="settings-row">
+          <div class="settings-label">Verified</div>
+          <div class="settings-value" id="settingsVerified">—</div>
+        </div>
+        <div class="settings-row">
+          <div class="settings-label">Member since</div>
+          <div class="settings-value" id="settingsCreatedAt">—</div>
+        </div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">I am a...</div>
+        <p class="settings-hint">Switch your persona view at any time — this doesn't affect your existing commitments or contacts.</p>
+        <div class="contact-form-row">
+          <select id="settingsPersonaSelect" class="contact-input">
+            <option value="student">Student</option>
+            <option value="professional">Working Professional</option>
+            <option value="business">Business / Executive</option>
+          </select>
+          <button class="primary" id="settingsPersonaSaveBtn">Save</button>
+        </div>
+        <div id="settingsPersonaStatus" class="auth-success" style="display:none; margin-top:12px;"></div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">Coming Soon</div>
+        <p class="settings-hint">Notification preferences arrive with Calendar Actions. Contact importance weights arrive with Relationship Scoring (Phase 2).</p>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">Account Actions</div>
+        <button class="deadline-edit-btn" id="settingsLogoutBtn" style="color:#f05757; border-color:#f05757;">Log Out</button>
       </div>
     </section>
 

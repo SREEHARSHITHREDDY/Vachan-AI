@@ -33,7 +33,14 @@ from app.core.security import (
 )
 from app.models.database import get_db
 from app.models.db_models import User
-from app.schemas.auth import LoginRequest, SignupRequest, SignupResponse, TokenResponse, UserOut
+from app.schemas.auth import (
+    LoginRequest,
+    SignupRequest,
+    SignupResponse,
+    TokenResponse,
+    UpdateMeRequest,
+    UserOut,
+)
 
 router = APIRouter()
 
@@ -133,4 +140,31 @@ def get_me(user_id: str = Depends(get_current_user_id), db: Session = Depends(ge
     user = db.query(User).filter(User.user_id == user_id).first()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+    return UserOut.model_validate(user)
+
+
+@router.patch("/auth/me", response_model=UserOut)
+def update_me(
+    payload: UpdateMeRequest,
+    user_id: str = Depends(get_current_user_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Currently only persona_mode is changeable here — email/password
+    changes aren't built (no "confirm current password" or re-verification
+    flow exists yet, and shipping that without it would be a real
+    security gap, not just an unfinished feature). Letting someone
+    switch which persona view they're in (e.g. a student who's since
+    started freelancing) is safe to allow immediately since nothing
+    currently branches on persona_mode beyond storing/displaying it.
+    """
+    user = db.query(User).filter(User.user_id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if payload.persona_mode is not None:
+        user.persona_mode = payload.persona_mode
+
+    db.commit()
+    db.refresh(user)
     return UserOut.model_validate(user)

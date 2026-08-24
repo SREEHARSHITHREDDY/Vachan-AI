@@ -185,3 +185,30 @@ def test_verification_token_cannot_be_used_as_access_token(client):
 
     response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {verification_token}"})
     assert response.status_code == 401
+
+
+def test_update_persona_mode(client):
+    del app.dependency_overrides[get_current_user_id]
+
+    signup_resp = client.post("/api/v1/auth/signup", json={"email": "switcher@example.com", "password": "correcthorse123"})
+    db = next(app.dependency_overrides[get_db]())
+    _verify_user_directly(db, "switcher@example.com")
+
+    login_resp = client.post("/api/v1/auth/login", json={"email": "switcher@example.com", "password": "correcthorse123"})
+    token = login_resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    assert client.get("/api/v1/auth/me", headers=headers).json()["persona_mode"] == "student"
+
+    response = client.patch("/api/v1/auth/me", json={"persona_mode": "business"}, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["persona_mode"] == "business"
+
+    # Confirm it actually persisted, not just echoed back in the response
+    assert client.get("/api/v1/auth/me", headers=headers).json()["persona_mode"] == "business"
+
+
+def test_update_me_without_token_rejected(client):
+    del app.dependency_overrides[get_current_user_id]
+    response = client.patch("/api/v1/auth/me", json={"persona_mode": "business"})
+    assert response.status_code == 401
