@@ -125,6 +125,13 @@ class Commitment(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     inferred_deadline: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Calendar Actions (Phase 1): how long before inferred_deadline to
+    # fire a browser notification, if the user has explicitly opted in —
+    # null means no reminder is set. This is deliberately "confirmation-
+    # gated": nothing fires unless the user picked an offset AND granted
+    # browser notification permission (see frontend calendar_actions.js) —
+    # there's no automatic, unconfirmed reminder path.
+    reminder_minutes_before: Mapped[int | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

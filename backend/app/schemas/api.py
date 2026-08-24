@@ -63,12 +63,21 @@ class CommitmentUpdate(BaseModel):
     set-only pattern as the other fields. Passing a contact_id that
     doesn't belong to the demo user (or doesn't exist) is rejected with a
     404 by the router, not silently ignored.
+
+    reminder_minutes_before is the Calendar Actions field: how long
+    before inferred_deadline to fire a browser notification. Requires a
+    deadline to already be set — the router rejects setting a reminder
+    on a commitment with no deadline, since "remind me before X" is
+    meaningless without an X. Pass 0 explicitly to clear a reminder
+    (None here means "not provided in this request", matching every
+    other field's set-only semantics — it does NOT mean "clear it").
     """
 
     state: Optional[Literal["pending", "at-risk", "fulfilled"]] = None
     starts_at: Optional[datetime] = None
     inferred_deadline: Optional[datetime] = None
     contact_id: Optional[str] = None
+    reminder_minutes_before: Optional[int] = None
 
 
 class CommitmentOut(BaseModel):
@@ -78,6 +87,7 @@ class CommitmentOut(BaseModel):
     description: str
     starts_at: Optional[datetime] = None
     inferred_deadline: Optional[datetime] = None
+    reminder_minutes_before: Optional[int] = None
     created_at: datetime
     resolved_at: Optional[datetime] = None
     # NOT on the Commitment DB row itself — it lives on the related Message

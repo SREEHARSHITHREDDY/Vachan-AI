@@ -246,6 +246,29 @@ function contactAssignHtml(c) {
   `;
 }
 
+const REMINDER_OPTIONS = [
+  [0, "No reminder"],
+  [15, "15 min before"],
+  [60, "1 hour before"],
+  [1440, "1 day before"],
+];
+
+function reminderRowHtml(c) {
+  // Calendar Actions: only makes sense once a deadline exists — "remind
+  // me before X" is meaningless with no X. Nothing rendered otherwise,
+  // rather than a disabled/confusing control.
+  if (!c.inferred_deadline) return "";
+  const current = c.reminder_minutes_before || 0;
+  const options = REMINDER_OPTIONS
+    .map(([mins, label]) => `<option value="${mins}" ${mins === current ? "selected" : ""}>${label}</option>`)
+    .join("");
+  return `
+    <select class="contact-assign-select" data-set-reminder data-commitment-id="${c.commitment_id}" title="Get a browser notification before this is due">
+      ${options}
+    </select>
+  `;
+}
+
 function commitmentItemHtml(c) {
   const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
   const channelPart = channelLabel ? ` · via ${channelLabel}` : "";
@@ -256,6 +279,7 @@ function commitmentItemHtml(c) {
         <div class="commitment-meta">${c.commitment_type}${channelPart} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
         ${deadlineRowHtml(c)}
         ${contactAssignHtml(c)}
+        ${reminderRowHtml(c)}
       </div>
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         ${badgeHtml(c.state)}
@@ -463,10 +487,11 @@ function renderNoDeadlineList(data) {
 
 function kanbanCardHtml(c) {
   const channelLabel = c.channel ? CHANNEL_LABELS[c.channel] || c.channel : null;
+  const reminderTag = c.reminder_minutes_before ? " 🔔" : "";
   return `
     <div class="kanban-card" draggable="true" data-kanban-card
          data-commitment-id="${c.commitment_id}" data-current-state="${c.state}">
-      <div class="kanban-card-desc">${escapeHtml(c.description)}</div>
+      <div class="kanban-card-desc">${escapeHtml(c.description)}${reminderTag}</div>
       <div class="kanban-card-meta">${c.commitment_type}${channelLabel ? " · " + channelLabel : ""}${c.contact_name ? " · " + escapeHtml(c.contact_name) : ""}</div>
       ${c.inferred_deadline ? `<div class="kanban-card-deadline">${formatRange(c.starts_at, c.inferred_deadline)}</div>` : ""}
     </div>
@@ -711,20 +736,48 @@ function wireNav() {
 
   document.addEventListener("change", async (e) => {
     const assignSelect = e.target.closest("[data-assign-contact]");
-    if (!assignSelect) return;
+    if (assignSelect) {
+      const commitmentId = assignSelect.dataset.commitmentId;
+      const contactId = assignSelect.value;
+      if (!contactId) return;
 
-    const commitmentId = assignSelect.dataset.commitmentId;
-    const contactId = assignSelect.value;
-    if (!contactId) return;
+      assignSelect.disabled = true;
+      try {
+        await updateCommitment(commitmentId, { contact_id: contactId });
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+      } catch (err) {
+        showError("Could not link contact — is the backend running?");
+      } finally {
+        assignSelect.disabled = false;
+      }
+      return;
+    }
 
-    assignSelect.disabled = true;
-    try {
-      await updateCommitment(commitmentId, { contact_id: contactId });
-      await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
-    } catch (err) {
-      showError("Could not link contact — is the backend running?");
-    } finally {
-      assignSelect.disabled = false;
+    const reminderSelect = e.target.closest("[data-set-reminder]");
+    if (reminderSelect) {
+      const commitmentId = reminderSelect.dataset.commitmentId;
+      const minutes = parseInt(reminderSelect.value, 10);
+
+      // The actual confirmation gate: setting any real reminder (not
+      // "No reminder") requires the browser's own explicit permission
+      // prompt — the user has to confirm twice, once by picking an
+      // offset here and once in the browser's own dialog, before
+      // anything can ever notify them.
+      if (minutes > 0 && await requestNotificationPermission() === false) {
+        showError("Notifications were blocked — enable them in your browser settings to use reminders.");
+        reminderSelect.value = "0";
+        return;
+      }
+
+      reminderSelect.disabled = true;
+      try {
+        await updateCommitment(commitmentId, { reminder_minutes_before: minutes });
+        await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar()]);
+      } catch (err) {
+        showError("Could not set reminder — is the backend running?");
+      } finally {
+        reminderSelect.disabled = false;
+      }
     }
   });
 
@@ -819,6 +872,65 @@ function wireNav() {
   });
 }
 
+// ---------- Calendar Actions (reminders) ----------
+// Deliberately confirmation-gated at two layers: (1) the user must
+// explicitly pick a non-zero offset on a specific commitment — nothing
+// is ever reminded by default, and (2) that action triggers the
+// browser's own native permission prompt, which the user can still
+// decline even after opting in here. Nothing can ever notify without
+// both of those explicit confirmations having happened.
+
+let firedReminderIds = new Set();
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) {
+    showError("Your browser doesn't support notifications.");
+    return false;
+  }
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") return false;
+  const result = await Notification.requestPermission();
+  return result === "granted";
+}
+
+async function checkReminders() {
+  // No-op (not an error) if permission was never granted — this is what
+  // makes it safe to always have the polling interval running in the
+  // background from app startup, rather than only starting it after the
+  // first reminder is set.
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+
+  try {
+    const data = await getCommitments();
+    const now = Date.now();
+    data.forEach((c) => {
+      if (!c.reminder_minutes_before || !c.inferred_deadline) return;
+      if (c.state === "fulfilled") return;
+      if (firedReminderIds.has(c.commitment_id)) return;
+
+      const deadlineMs = new Date(c.inferred_deadline).getTime();
+      const reminderMs = deadlineMs - c.reminder_minutes_before * 60 * 1000;
+      if (now >= reminderMs) {
+        new Notification("VachanAI Reminder", {
+          body: `"${c.description}" — due ${formatDate(c.inferred_deadline)}`,
+          icon: "favicon.svg",
+        });
+        firedReminderIds.add(c.commitment_id); // once per session — a
+        // page reload will re-check and could re-fire, which is
+        // reasonable (the user asked to be reminded, and a reload isn't
+        // "I saw it already").
+      }
+    });
+  } catch (err) {
+    console.warn("Reminder check failed:", err);
+  }
+}
+
+function startReminderPolling() {
+  checkReminders();
+  setInterval(checkReminders, 60 * 1000);
+}
+
 async function init() {
   const authenticated = initAuthScreen();
   if (!authenticated) return; // auth screen is showing; nothing else should run yet
@@ -828,6 +940,7 @@ async function init() {
   document.getElementById("logoutBtn")?.addEventListener("click", logout);
   selectChannel("message");
   fetchContactsCache();
+  startReminderPolling();
 
   try {
     await initAnimations();

@@ -162,6 +162,20 @@ def update_commitment(
     if payload.starts_at is not None:
         commitment.starts_at = payload.starts_at
 
+    if payload.reminder_minutes_before is not None:
+        if payload.reminder_minutes_before == 0:
+            commitment.reminder_minutes_before = None  # explicit clear — see CommitmentUpdate docstring
+        else:
+            # A reminder needs a deadline to count backward from — either
+            # already on the row, or being set in this same request.
+            effective_deadline = payload.inferred_deadline or commitment.inferred_deadline
+            if effective_deadline is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot set a reminder on a commitment with no deadline.",
+                )
+            commitment.reminder_minutes_before = payload.reminder_minutes_before
+
     if payload.contact_id is not None:
         contact = (
             db.query(Contact)
