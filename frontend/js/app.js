@@ -263,9 +263,12 @@ function reminderRowHtml(c) {
     .map(([mins, label]) => `<option value="${mins}" ${mins === current ? "selected" : ""}>${label}</option>`)
     .join("");
   return `
-    <select class="contact-assign-select" data-set-reminder data-commitment-id="${c.commitment_id}" title="Get a browser notification before this is due">
-      ${options}
-    </select>
+    <div class="deadline-row" style="margin-top:6px;">
+      <span class="deadline-display">🔔 Reminder:</span>
+      <select class="contact-assign-select" data-set-reminder data-commitment-id="${c.commitment_id}" title="Get a browser notification before this is due" style="margin-top:0;">
+        ${options}
+      </select>
+    </div>
   `;
 }
 
