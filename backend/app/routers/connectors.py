@@ -55,7 +55,7 @@ def whatsapp_import(
 ):
     _require_llm_key()
     try:
-        parsed = whatsapp.parse_chat(
+        parsed = whatsapp.parse_chat_all(
             payload.text,
             my_name=payload.my_name,
             chat_name=payload.chat_name,
@@ -64,7 +64,11 @@ def whatsapp_import(
         )
     except ConnectorError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-    summary = ingest_messages(db, user_id, parsed, "whatsapp", payload.max_messages)
+    summary = ingest_messages(
+        db, user_id, parsed, "whatsapp", payload.max_messages,
+        include_incoming=payload.include_incoming,
+        utc_offset_minutes=payload.utc_offset_minutes,
+    )
     return ApiResponse(data=summary.model_dump())
 
 
@@ -92,7 +96,10 @@ def gmail_sync(
         raise HTTPException(status_code=401, detail=str(exc))
     except ConnectorError as exc:
         raise HTTPException(status_code=502, detail=str(exc))
-    summary = ingest_messages(db, user_id, parsed, "gmail", payload.max_messages)
+    summary = ingest_messages(
+        db, user_id, parsed, "gmail", payload.max_messages,
+        utc_offset_minutes=payload.utc_offset_minutes,
+    )
     return ApiResponse(data=summary.model_dump())
 
 

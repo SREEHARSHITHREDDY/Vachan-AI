@@ -39,10 +39,10 @@ def test_whatsapp_inspect_then_import_end_to_end(client, llm):
     # idempotent from the user's point of view
     again = client.post("/api/v1/connectors/whatsapp/import",
                         json={"text": CHAT, "my_name": "Harshith"}).json()["data"]
-    assert again["already_imported"] == 2 and again["processed"] == 0
+    assert again["already_imported"] == 3 and again["processed"] == 0  # her question + my 2 messages
 
     status = client.get("/api/v1/connectors/status").json()["data"]
-    assert status["whatsapp"]["messages"] == 2 and status["gmail"]["messages"] == 0
+    assert status["whatsapp"]["messages"] == 3 and status["gmail"]["messages"] == 0
 
 
 def test_whatsapp_wrong_name_is_a_clear_422(client, llm):
@@ -101,3 +101,32 @@ def test_too_short_app_password_is_rejected_without_echoing_it(client, llm):
     res = client.post("/api/v1/connectors/gmail/sync",
                       json={"gmail_address": "me@gmail.com", "app_password": "tiny-pw"})
     assert res.status_code == 422 and "tiny-pw" not in res.text
+
+
+RAHUL_CHAT = (
+    "05/10/2026, 14:00 - Rahul: Can we meet at 4:30 pm on 7th Oct to go over the demo?\n"
+    "05/10/2026, 14:05 - Harshith: Sure, see you then\n"
+    "05/10/2026, 18:00 - Rahul: Also please send me the slides before that, let me know\n"
+)
+
+
+def test_meeting_shows_up_under_the_right_person_with_a_natural_description(client, llm):
+    data = client.post("/api/v1/connectors/whatsapp/import",
+                       json={"text": RAHUL_CHAT, "my_name": "Harshith"}).json()["data"]
+    assert data["commitments_created"] == 1
+    assert data["by_person"][0]["contact_name"] == "Rahul"
+    assert data["items"][0]["new_commitment"] == "Meet Rahul at 4:30 PM on 7 Oct"
+    assert data["items"][0]["deadline"].startswith("2026-10-07T16:30")
+    # his last message is a request nobody has answered yet
+    assert [a["contact_name"] for a in data["awaiting_reply"]] == ["Rahul"]
+
+    commitments = client.get("/api/v1/commitments").json()["data"]
+    meet = next(c for c in commitments if "Rahul" in c["description"])
+    assert meet["contact_name"] == "Rahul" and meet["channel"] == "whatsapp"
+
+
+def test_include_incoming_false_keeps_other_peoples_messages_out_of_the_database(client, llm):
+    data = client.post("/api/v1/connectors/whatsapp/import",
+                       json={"text": RAHUL_CHAT, "my_name": "Harshith", "include_incoming": False}).json()["data"]
+    assert data["incoming_processed"] == 0 and data["commitments_created"] == 1  # still understood in context
+    assert client.get("/api/v1/connectors/status").json()["data"]["whatsapp"]["messages"] == 1

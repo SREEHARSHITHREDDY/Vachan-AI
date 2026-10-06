@@ -153,8 +153,15 @@ FEW_SHOT_EXAMPLES = [
 ]
 
 
-def _build_user_content(message: str) -> str:
-    """Assembles the few-shot examples + target message into the user turn."""
+def _build_user_content(message: str, preface: str | None = None) -> str:
+    """
+    Assembles the few-shot examples + target message into the user turn.
+
+    `preface` is only supplied for messages ingested from a connector
+    (conversation context, send date). It goes BETWEEN the examples and the
+    message to classify, so the examples themselves — and therefore the
+    prompt behaviour measured by the precision baseline — are untouched.
+    """
     example_blocks = []
     for ex in FEW_SHOT_EXAMPLES:
         example_blocks.append(
@@ -162,9 +169,54 @@ def _build_user_content(message: str) -> str:
         )
     examples_text = "\n\n".join(example_blocks)
 
+    preface_text = f"{preface}\n\n" if preface else ""
     return (
         f"Here are some labeled examples:\n\n{examples_text}\n\n"
+        f"{preface_text}"
         f"Now classify this message:\n\nMessage: {message}\nResponse:"
+    )
+
+
+def build_conversation_context(
+    history_lines: list[str],
+    author: str | None,
+    counterparty: str | None,
+) -> str:
+    """
+    Text describing the chat a message belongs to, for connector-ingested
+    messages. `history_lines` are the earlier messages, oldest first, each
+    already labelled with who wrote it. `author` is the name of the person
+    who wrote the message being classified (None = the user themself);
+    `counterparty` is the person it is with.
+
+    The wording is deliberately concrete about the one behaviour this
+    exists for: a reply like "Sure" must be turned into the full
+    arrangement it agrees to, naming the other person and the time.
+    """
+    history = "\n".join(history_lines) if history_lines else "(no earlier messages)"
+    who = author or "the user"
+    other = counterparty or "the other person"
+    rules = [
+        "- Use the earlier messages to understand what the message below refers to.",
+        (
+            "- If the message agrees to, confirms or schedules something the earlier messages "
+            "describe (for example \"Sure\" in reply to a proposed meeting time), set is_commitment "
+            "to true and write the description as ONE short sentence that names "
+            f"{other} and includes the date and time, like \"Meet {other} at <time> on <date>\", "
+            "using the real time and date from the conversation. Set inferred_deadline to that "
+            "date and time."
+        ),
+    ]
+    if author:
+        rules.append(
+            f"- The message below was written by {author}, NOT by the user. Only report promises "
+            f"{author} made to the user (commitment_type made-to-me). A question, request or proposal "
+            f"that the user has not agreed to is not a commitment."
+        )
+    return (
+        "Conversation context (this message is part of a chat). Earlier messages, oldest first:\n"
+        f"{history}\n\n"
+        f"The message to classify was written by {who}.\n" + "\n".join(rules)
     )
 
 
@@ -189,7 +241,10 @@ class ExtractionService:
         self._llm_client = llm_client or LLMClient()
 
     def extract(
-        self, raw_message: str, reference_time: datetime | None = None
+        self,
+        raw_message: str,
+        reference_time: datetime | None = None,
+        context: str | None = None,
     ) -> ExtractionResult:
         """
         Classifies a single message and returns a validated ExtractionResult.
@@ -198,22 +253,26 @@ class ExtractionService:
         the expected schema — this is the validation gate described in
         AI Architecture Section 7.5; a malformed output is rejected here,
         not silently passed downstream.
+
+        reference_time / context are only passed for messages ingested from
+        a connector, where the message was written in the past and is part
+        of a conversation. reference_time must be the user's LOCAL time
+        (deadlines are stored and shown as local times with no zone, same
+        as for typed messages), so "by Friday" and "4:30 pm" resolve
+        against when the message was sent, not when the import runs.
         """
         cleaned_message = strip_signature_and_quotes(raw_message)
+        parts = []
         if reference_time is not None:
-            # Only used for messages ingested from a connector, where the
-            # message was written in the past: relative phrases like
-            # "by Friday" must resolve against when it was SENT, not
-            # against whenever the import happens to run. Left out
-            # entirely for live/manual messages so the prompt (and the
-            # measured precision baseline) is unchanged for them.
-            cleaned_message = (
-                f"[This message was sent on "
-                f"{reference_time.strftime('%A, %d %B %Y, %H:%M')} UTC. "
-                f"Resolve relative dates such as 'Friday' or 'tomorrow' "
-                f"against that date.]\n{cleaned_message}"
+            parts.append(
+                f"The message below was sent on {reference_time.strftime('%A, %d %B %Y, %H:%M')} "
+                f"(the user's local time). Resolve relative dates such as 'Friday' or 'tomorrow' "
+                f"against that date, and write inferred_start / inferred_deadline as local times "
+                f"without a timezone."
             )
-        user_content = _build_user_content(cleaned_message)
+        if context:
+            parts.append(context)
+        user_content = _build_user_content(cleaned_message, "\n\n".join(parts) or None)
 
         raw_result = self._llm_client.get_structured_response(
             system_prompt=SYSTEM_PROMPT,

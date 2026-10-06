@@ -108,3 +108,63 @@ def test_ids_do_not_depend_on_the_timezone_offset_used():
     a = [m.external_id for m in parse_chat(ANDROID_24H, "Harshith", utc_offset_minutes=0)]
     b = [m.external_id for m in parse_chat(ANDROID_24H, "Harshith", utc_offset_minutes=330)]
     assert a == b
+
+
+# ---- everyone's messages + who each one is with --------------------------
+
+from app.services.connectors.whatsapp import parse_chat_all  # noqa: E402
+
+GROUP = """\
+05/10/2026, 10:00 - Rahul: Harshith can we meet at 4:30 pm on 7th Oct for the demo?
+05/10/2026, 10:02 - Harshith: Sure Rahul, see you then
+05/10/2026, 10:10 - Priya: Can you share the dataset by Thursday?
+05/10/2026, 10:11 - Harshith: Yes I will send it tomorrow
+05/10/2026, 14:00 - Harshith: I will bring the printed copies on Monday
+05/10/2026, 14:05 - Ankit: I'll fix the login bug by tomorrow
+"""
+
+
+def test_parse_all_returns_both_directions_with_sender_and_direction():
+    msgs = parse_chat_all(GROUP, "Harshith", chat_name="Project Team")
+    assert [(m.sender_name, m.direction) for m in msgs][:3] == [
+        ("Rahul", "inbound"), ("Harshith", "outbound"), ("Priya", "inbound")]
+    assert len(msgs) == 6
+    assert all(m.thread_key == "project team" for m in msgs)
+
+
+def test_outbound_ids_match_parse_chat_so_old_imports_still_dedupe():
+    only_mine = {m.external_id for m in parse_chat(GROUP, "Harshith", chat_name="Project Team")}
+    all_mine = {m.external_id for m in parse_chat_all(GROUP, "Harshith", chat_name="Project Team")
+                if m.direction == "outbound"}
+    assert only_mine == all_mine and all(i.startswith("wa:") for i in only_mine)
+    assert all(m.external_id.startswith("wa-in:") for m in parse_chat_all(GROUP, "Harshith")
+               if m.direction == "inbound")
+
+
+def test_group_message_is_attributed_to_the_named_person_then_the_one_replied_to():
+    msgs = {m.body[:12]: m for m in parse_chat_all(GROUP, "Harshith", chat_name="Project Team")}
+    assert msgs["Sure Rahul, "].counterparty_name == "Rahul"          # named in the text
+    assert msgs["Yes I will s"].counterparty_name == "Priya"          # replying to Priya
+    # nobody named and the last speaker is 4 hours back → falls back to the chat
+    assert msgs["I will bring"].counterparty_name == "Project Team"
+
+
+def test_inbound_message_is_with_its_sender_and_one_to_one_uses_the_other_person():
+    msgs = parse_chat_all(GROUP, "Harshith")
+    assert [m.counterparty_name for m in msgs if m.direction == "inbound"] == ["Rahul", "Priya", "Ankit"]
+    one = parse_chat_all(ANDROID_24H, "Harshith", chat_name="whatever.txt")
+    assert {m.counterparty_name for m in one} == {"Priya"}
+
+
+def test_chat_where_the_user_never_replied_is_all_incoming_not_an_error():
+    text = ("04/10/2026, 20:15 - Sneha: Hi, I finished the poster draft\n"
+            "04/10/2026, 20:16 - Sneha: Can you review it and send me feedback by Wednesday?\n")
+    msgs = parse_chat_all(text, "Harshith", chat_name="Sneha")
+    assert [m.direction for m in msgs] == ["inbound", "inbound"]
+    assert {m.counterparty_name for m in msgs} == {"Sneha"}
+    assert parse_chat(text, "Harshith") == []  # nothing of mine to analyse
+
+
+def test_unknown_name_is_still_rejected_when_several_people_spoke():
+    with pytest.raises(ConnectorError):
+        parse_chat_all(GROUP, "Nobody")

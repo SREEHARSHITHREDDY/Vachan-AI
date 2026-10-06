@@ -113,6 +113,9 @@ class MessageProcessResult(BaseModel):
     new_commitment: Optional[CommitmentOut] = None
     resolved_commitment_id: Optional[str] = None
     resolution_reasoning: Optional[str] = None
+    # True when a commitment was recognised but an open one with the same
+    # person at the same time already exists (connector imports only).
+    duplicate_skipped: bool = False
 
 
 class DigestOut(BaseModel):
@@ -167,5 +170,10 @@ class ContactOut(BaseModel):
     email_or_handle: str
     role_tag: str
     created_at: datetime
+    # Filled in by GET /contacts only (defaults elsewhere): what is going on
+    # with this person, so the Contacts page shows more than a name.
+    open_commitments: int = 0
+    fulfilled_commitments: int = 0
+    next_deadline: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

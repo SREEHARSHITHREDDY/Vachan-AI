@@ -172,7 +172,7 @@ export function inspectWhatsApp(text) {
   return postJson("/connectors/whatsapp/inspect", { text });
 }
 
-export function importWhatsApp({ text, myName, chatName, maxMessages = 50 }) {
+export function importWhatsApp({ text, myName, chatName, maxMessages = 50, includeIncoming = true }) {
   return postJson("/connectors/whatsapp/import", {
     text,
     my_name: myName,
@@ -180,6 +180,7 @@ export function importWhatsApp({ text, myName, chatName, maxMessages = 50 }) {
     // Export timestamps are the phone's local time with no zone attached.
     utc_offset_minutes: -new Date().getTimezoneOffset(),
     max_messages: maxMessages,
+    include_incoming: includeIncoming,
   });
 }
 
@@ -189,9 +190,14 @@ export function syncGmail({ address, appPassword, days = 14, maxMessages = 25 })
     app_password: appPassword,
     days,
     max_messages: maxMessages,
+    utc_offset_minutes: -new Date().getTimezoneOffset(),
   });
 }
 
 export function getConnectorStatus() {
   return request("/connectors/status");
+}
+
+export function getContactCommitments(contactId) {
+  return request(`/contacts/${contactId}/commitments`);
 }

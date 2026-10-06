@@ -19,7 +19,7 @@ fixture helper (existing tests create setup data against it directly) —
 it is no longer called anywhere in the actual request-handling path.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
@@ -51,6 +51,37 @@ def _get_demo_user_id(db: Session) -> str:
     return user.user_id
 
 
+def _already_tracked(
+    db: Session,
+    user_id: str,
+    contact_id: str | None,
+    deadline: datetime | None,
+    external_id: str | None,
+) -> bool:
+    """
+    True if this user already has an OPEN commitment with the same person at
+    the same date and time. In a conversation both sides usually mention the
+    same meeting ("4:30 on the 7th?" / "Sure, 4:30 then"), and it must be one
+    entry, not two. Only applies to connector-ingested messages and only when
+    the person and a concrete time are both known, so manual entries and
+    vague promises are never silently swallowed.
+    """
+    if external_id is None or contact_id is None or deadline is None:
+        return False
+    return (
+        db.query(Commitment.commitment_id)
+        .filter(
+            Commitment.user_id == user_id,
+            Commitment.contact_id == contact_id,
+            Commitment.inferred_deadline == deadline,
+            Commitment.state.in_(["pending", "at-risk"]),
+            Commitment.is_deleted.is_(False),
+        )
+        .first()
+        is not None
+    )
+
+
 def process_incoming_message(
     db: Session,
     body: str,
@@ -60,6 +91,9 @@ def process_incoming_message(
     contact_id: str | None = None,
     sent_at: datetime | None = None,
     external_id: str | None = None,
+    direction: str = "outbound",
+    context: str | None = None,
+    utc_offset_minutes: int = 0,
 ) -> MessageProcessResult:
     """
     The full closed loop, run for real against the database: save the
@@ -86,13 +120,27 @@ def process_incoming_message(
                      processing fails for a message that has one, the
                      stored row is removed again so a later re-sync can
                      retry it instead of treating it as already done.
+      direction    — "outbound" (the user wrote it) or "inbound" (the
+                     other person did). Inbound messages can only fulfil,
+                     and only create, promises made TO the user.
+      context      — conversation text built by the ingestion service so a
+                     reply like "Sure" is read against the message it
+                     answers (see extraction_service.build_conversation_context).
+      utc_offset_minutes — the user's offset from UTC, so the extractor
+                     can be told the message's LOCAL send time.
+
+    For connector-ingested messages (those with an external_id) resolution
+    is also scoped: only open commitments with the same contact (or no
+    contact yet) are considered, and only of the matching kind — so
+    Priya's "done!" can never close a promise made to Rahul, and the
+    user's own "sent it" can never close something Rahul promised them.
     """
     event_time = sent_at or datetime.now(timezone.utc)
     message = Message(
         user_id=user_id,
         contact_id=contact_id,
         channel=channel,
-        direction="outbound",
+        direction=direction,
         body_ref=body,
         sent_at=event_time,
         external_id=external_id,
@@ -113,6 +161,16 @@ def process_incoming_message(
             )
             .all()
         )
+
+        if external_id is not None:
+            if contact_id is not None:
+                open_commitments = [
+                    c for c in open_commitments if c.contact_id in (None, contact_id)
+                ]
+            if direction == "inbound":
+                open_commitments = [c for c in open_commitments if c.commitment_type == "made-to-me"]
+            else:
+                open_commitments = [c for c in open_commitments if c.commitment_type != "made-to-me"]
 
         if open_commitments:
             summaries = [
@@ -138,29 +196,45 @@ def process_incoming_message(
         settings = get_settings()
         if settings.groq_api_key:
             extractor = ExtractionService()
+            extra = {}
             if sent_at is not None:
-                extraction = extractor.extract(body, reference_time=sent_at)
-            else:
-                extraction = extractor.extract(body)
+                local_time = (
+                    sent_at.astimezone(timezone.utc) if sent_at.tzinfo else sent_at
+                ).replace(tzinfo=None) + timedelta(minutes=utc_offset_minutes)
+                extra["reference_time"] = local_time
+            if context:
+                extra["context"] = context
+            extraction = extractor.extract(body, **extra)
 
-            if extraction.is_commitment:
-                new_commitment = Commitment(
-                    user_id=user_id,
-                    contact_id=contact_id,
-                    source_message_id=message.message_id,
-                    commitment_type=extraction.commitment_type.value
-                    if hasattr(extraction.commitment_type, "value")
-                    else extraction.commitment_type,
-                    description=extraction.description,
-                    starts_at=extraction.inferred_start,
-                    inferred_deadline=extraction.inferred_deadline,
-                    state="pending",
-                )
-                db.add(new_commitment)
-                db.commit()
-                db.refresh(new_commitment)
-                result.new_commitment = CommitmentOut.model_validate(new_commitment)
-                result.new_commitment.channel = channel
+            ctype = (
+                extraction.commitment_type.value
+                if hasattr(extraction.commitment_type, "value")
+                else extraction.commitment_type
+            )
+            # Someone else's message can only create a promise made TO the
+            # user; a proposal/request they haven't been answered on is
+            # not a commitment yet (the user's later "Sure" creates it).
+            ignore_inbound = external_id is not None and direction == "inbound" and ctype != "made-to-me"
+
+            if extraction.is_commitment and not ignore_inbound:
+                if _already_tracked(db, user_id, contact_id, extraction.inferred_deadline, external_id):
+                    result.duplicate_skipped = True
+                else:
+                    new_commitment = Commitment(
+                        user_id=user_id,
+                        contact_id=contact_id,
+                        source_message_id=message.message_id,
+                        commitment_type=ctype,
+                        description=extraction.description,
+                        starts_at=extraction.inferred_start,
+                        inferred_deadline=extraction.inferred_deadline,
+                        state="pending",
+                    )
+                    db.add(new_commitment)
+                    db.commit()
+                    db.refresh(new_commitment)
+                    result.new_commitment = CommitmentOut.model_validate(new_commitment)
+                    result.new_commitment.channel = channel
 
     except Exception:
         # Connector-ingested message: undo the stored row so the next

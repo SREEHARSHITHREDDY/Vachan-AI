@@ -56,12 +56,14 @@ cp .env.example .env
 
 Open the **Connect** tab after logging in. Needs `GROQ_API_KEY` set (extraction runs on every imported message).
 
-- **WhatsApp:** in WhatsApp, open a chat → *Export chat* → *Without media*, choose the `.txt` here, pick which participant is you, and import. Only your own messages are read; re-importing never duplicates.
+- **WhatsApp:** in WhatsApp open a chat → *Export chat* → *Without media*, then choose the `.txt` file(s) here — several chats at once and group chats work. Pick which participant is you and import. Each promise is filed under the **person** it is with, and replies are read in context: after Rahul's "can we meet at 4:30 pm on 7th Oct?", your "Sure, see you then" becomes *Meet Rahul at 4:30 PM on 7 Oct* under Rahul. Re-importing never duplicates.
+- **Other people's messages:** by default what they wrote is read and stored too, so promises *they* made to you are tracked, and chats where someone is waiting on you are listed as "Waiting for your reply". Untick the box to store only your own messages (the other side is then used temporarily, as context).
 - **Gmail:** create a Google *app password* (needs 2-Step Verification), enter your address + the app password, and sync. Reads your **sent** mail only; the password is used for that request and never stored. Personal Gmail works best — school/work accounts often disable app passwords.
+- **Contacts:** every person from an import becomes a contact; the Contacts tab shows what is open / fulfilled with each and lets you expand their commitments.
 
-Imported messages go through the same loop as manual ones: a later message such as "Sent the notes" can mark an earlier promise fulfilled, and the other party becomes a Contact. See ADR-018 for the design and its limits.
+Imported messages go through the same loop as manual ones: a later message such as "Sent the notes" can mark an earlier promise fulfilled. See ADR-018 and ADR-019 for the design and its limits.
 
-Endpoints (all authenticated): `POST /api/v1/connectors/whatsapp/inspect`, `POST /api/v1/connectors/whatsapp/import`, `POST /api/v1/connectors/gmail/sync`, `GET /api/v1/connectors/status`.
+Endpoints (all authenticated): `POST /api/v1/connectors/whatsapp/inspect`, `POST /api/v1/connectors/whatsapp/import`, `POST /api/v1/connectors/gmail/sync`, `GET /api/v1/connectors/status`, `GET /api/v1/contacts` (now with per-person counts), `GET /api/v1/contacts/{id}/commitments`.
 
 ## Running Tests
 

@@ -197,13 +197,13 @@ connectors that need no external approval:
   password. The folder is opened read-only, messages are fetched with
   BODY.PEEK, and the password is used for one request and never stored or
   logged.
-- **WhatsApp:** import the `.txt` produced by WhatsApp's own "Export chat".
-  Only the user's own messages are kept.
+- **WhatsApp:** import the `.txt` produced by WhatsApp's own "Export chat"
+  (one or several chats, group chats included).
 Both produce a shared `ParsedMessage` type and feed one ingestion service
 (de-duplicate by stable external id → oldest-first → existing resolution
-check + extraction → link/create contact). Only the user's *sent* messages
-are used because VachanAI tracks promises the user made and detects the
-user's own later fulfilment; other people's messages are never stored.
+check + extraction → link/create contact). Gmail reads the user's *sent*
+mail only. For WhatsApp see ADR-019 for how the other person's messages are
+used.
 **Consequences:** Works today, free, with no third-party approval. Not live
 or push-based: the user triggers a sync/import. Gmail app passwords need
 2-Step Verification and are often disabled on school/work accounts, and
@@ -212,5 +212,44 @@ Gmail API with OAuth (`gmail.readonly`) behind the same `ParsedMessage`
 interface, and the WhatsApp Business API once approved. Importing is capped
 per run (and trivial replies skipped) to bound LLM cost; repeated runs walk
 further back in time.
+*(Source: Phase 1 submission requirement, Oct 2026)*
+
+---
+
+### ADR-019: Conversation Context and Per-Person Attribution for Imported Chats
+**Context:** Analysing each message alone loses the point of real chats: "Sure,
+see you then" means nothing without the earlier "meet at 4:30 pm on 7th Oct?",
+and in a group chat it is unclear who a promise is *with*. The user needs each
+commitment filed under the right person ("Meet Rahul at 4:30 PM on 7 Oct" under
+Rahul), and to see who is waiting for a reply.
+**Decision:**
+- Each message is classified together with the previous 6 messages of the *same
+  chat* (never another chat's). Both sides are read; the extraction prompt gets a
+  separate context block placed between the few-shot examples and the message, so
+  the examples and the measured precision baseline are untouched. Manual messages
+  take the old path unchanged.
+- Every message is attributed to a person → that person is matched to (or becomes)
+  a Contact: email/handle, exact name, then a *unique* first name ("Rahul" finds
+  "Rahul Sharma"; an ambiguous first name creates a new contact rather than guess).
+  In groups: the member named in the text, else the member being replied to
+  (spoke within 20 minutes), else the chat name — deterministic heuristics.
+- Incoming messages can only create or fulfil promises made *to* the user
+  (`made-to-me`); a proposal the user has not accepted is not a commitment.
+  Resolution is scoped to the same contact and direction, so Priya's "done"
+  cannot close Rahul's promise.
+- The same person at the same date/time is one commitment, not two (both sides
+  usually mention the same meeting).
+- "Waiting for your reply" = the last message of a chat is from the other person
+  and contains a question/request keyword. Plain pattern matching, no LLM, shown
+  in the import results only; it is not stored.
+**Consequences:** Other people's messages are stored when `include_incoming` is on
+(the default, shown to the user with a tick-box); when off they are used only
+in memory as context and never stored. They are sent to the LLM provider as context
+either way. Costs more LLM calls (inbound messages are analysed too); the per-run
+cap, trivial-reply filter and early abort still bound it. Group attribution can
+guess wrong — that only mislabels the contact, never loses the commitment, and
+contacts can be re-linked by hand. Unanswered *requests* are surfaced, not yet
+tracked as commitments (a Phase 2 item). Verified with a faked LLM only: how well
+the real model reads a conversation still has to be measured on real chats.
 *(Source: Phase 1 submission requirement, Oct 2026)*
 

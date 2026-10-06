@@ -14,11 +14,12 @@ to a later phase's scoring logic, which doesn't exist yet.
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user_id
 from app.models.database import get_db
-from app.models.db_models import Contact
+from app.models.db_models import Commitment, Contact
 from app.schemas.api import ApiResponse, ContactCreate, ContactOut, ContactUpdate
 
 router = APIRouter()
@@ -35,8 +36,85 @@ def list_contacts(
         .order_by(Contact.name.asc())
         .all()
     )
-    data = [ContactOut.model_validate(c).model_dump() for c in contacts]
+    stats = _commitment_stats(db, user_id)
+    data = []
+    for c in contacts:
+        out = ContactOut.model_validate(c)
+        open_n, done_n, next_dl = stats.get(c.contact_id, (0, 0, None))
+        out.open_commitments, out.fulfilled_commitments, out.next_deadline = open_n, done_n, next_dl
+        data.append(out.model_dump())
     return ApiResponse(data=data)
+
+
+def _commitment_stats(db: Session, user_id: str) -> dict:
+    """contact_id -> (open count, fulfilled count, soonest open deadline),
+    in ONE grouped query rather than one per contact."""
+    open_states = ("pending", "at-risk")
+    rows = (
+        db.query(
+            Commitment.contact_id,
+            func.sum(case((Commitment.state.in_(open_states), 1), else_=0)),
+            func.sum(case((Commitment.state == "fulfilled", 1), else_=0)),
+            func.min(case((Commitment.state.in_(open_states), Commitment.inferred_deadline), else_=None)),
+        )
+        .filter(
+            Commitment.user_id == user_id,
+            Commitment.is_deleted.is_(False),
+            Commitment.contact_id.isnot(None),
+        )
+        .group_by(Commitment.contact_id)
+        .all()
+    )
+    stats = {}
+    for contact_id, open_n, done_n, next_dl in rows:
+        if isinstance(next_dl, str):  # SQLite returns the raw string from min()
+            next_dl = datetime.fromisoformat(next_dl)
+        stats[contact_id] = (int(open_n or 0), int(done_n or 0), next_dl)
+    return stats
+
+
+@router.get("/contacts/{contact_id}/commitments", response_model=ApiResponse)
+def list_contact_commitments(
+    contact_id: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+):
+    """Everything tied to one person, open items first (soonest deadline first)."""
+    # Imported here: routers.commitments already imports from this layer's
+    # siblings, and a module-level import would make the two routers depend
+    # on each other at import time.
+    from app.routers.commitments import _to_commitment_out_list
+
+    contact = (
+        db.query(Contact)
+        .filter(
+            Contact.contact_id == contact_id,
+            Contact.user_id == user_id,
+            Contact.is_deleted.is_(False),
+        )
+        .first()
+    )
+    if contact is None:
+        raise HTTPException(status_code=404, detail="Contact not found")
+
+    commitments = (
+        db.query(Commitment)
+        .filter(
+            Commitment.user_id == user_id,
+            Commitment.contact_id == contact_id,
+            Commitment.is_deleted.is_(False),
+        )
+        .all()
+    )
+    open_first = sorted(
+        commitments,
+        key=lambda c: (
+            c.state not in ("pending", "at-risk"),
+            c.inferred_deadline is None,
+            c.inferred_deadline or c.created_at,
+        ),
+    )
+    return ApiResponse(data=[c.model_dump() for c in _to_commitment_out_list(db, open_first)])
 
 
 @router.post("/contacts", response_model=ApiResponse)

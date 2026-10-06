@@ -143,6 +143,8 @@ def _parse_one(raw: bytes) -> ParsedMessage | None:
         sent_at=sent_at,
         counterparty_name=name or None,
         counterparty_handle=address.lower() or None,
+        direction="outbound",
+        thread_key=(address.lower() or None),
     )
 
 

@@ -254,22 +254,32 @@
       <div class="card" data-animate>
         <div class="section-title">WhatsApp chat import</div>
         <p class="settings-hint">
-          In WhatsApp open a chat → ⋮ / contact name → <b>Export chat</b> → <b>Without media</b>,
-          then choose the .txt file here. Only <b>your own</b> messages are read and stored — the other
-          person's messages are ignored. Importing the same chat again never creates duplicates.
+          In WhatsApp open a chat → ⋮ / contact name → <b>Export chat</b> → <b>Without media</b>, then choose the
+          .txt file(s) here. You can pick several chats at once, and group chats work too. Every promise is filed
+          under the <b>person</b> it is with, and replies are read in context — so "Sure" after Rahul's
+          "4:30 pm on 7th?" becomes <i>Meet Rahul at 4:30 PM on 7 Oct</i>. Importing the same chat again never
+          creates duplicates.
         </p>
         <div class="contact-form-row">
-          <input type="file" id="waFile" accept=".txt,text/plain" class="contact-input" />
+          <input type="file" id="waFile" accept=".txt,text/plain" multiple class="contact-input" />
         </div>
-        <div class="contact-form-row" id="waPickRow" style="display:none; margin-top:10px;">
-          <select id="waMyName" class="contact-input"></select>
-          <select id="waMax" class="contact-input">
-            <option value="25">Latest 25</option>
-            <option value="50" selected>Latest 50</option>
-            <option value="100">Latest 100</option>
-            <option value="200">Latest 200</option>
-          </select>
-          <button class="primary" id="waImportBtn">Import</button>
+        <div id="waPickRow" style="display:none; margin-top:10px;">
+          <div class="contact-form-row">
+            <select id="waMyName" class="contact-input"></select>
+            <select id="waMax" class="contact-input">
+              <option value="25">Latest 25 per chat</option>
+              <option value="50" selected>Latest 50 per chat</option>
+              <option value="100">Latest 100 per chat</option>
+              <option value="200">Latest 200 per chat</option>
+            </select>
+            <button class="primary" id="waImportBtn">Import</button>
+          </div>
+          <label class="settings-hint" style="display:flex; gap:8px; align-items:flex-start; margin:10px 0 0;">
+            <input type="checkbox" id="waIncoming" checked style="margin-top:3px;" />
+            <span>Also read what <b>other people</b> wrote, so promises they made to me are tracked and I can see who is
+            waiting on me. Their messages are stored with the import. Untick to store only your own messages (the
+            other side is still used, temporarily, to understand your replies).</span>
+          </label>
         </div>
         <div class="settings-hint" id="waPickHint" style="display:none; margin:8px 0 0;"></div>
         <div id="waResult" class="result-banner" style="display:none;"></div>

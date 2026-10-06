@@ -13,7 +13,7 @@ import {
   getDigest, getCommitments, postMessage, updateCommitment, deleteCommitment,
   getContacts, createContact, updateContact, deleteContact,
   getMe, updateMe,
-  inspectWhatsApp, importWhatsApp, syncGmail, getConnectorStatus,
+  inspectWhatsApp, importWhatsApp, syncGmail, getConnectorStatus, getContactCommitments,
 } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
 import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp, scrollReveal3D } from "./animations.js";
@@ -292,6 +292,7 @@ function commitmentItemHtml(c) {
     <div class="commitment-item" data-commitment-item>
       <div style="flex:1;">
         <div class="commitment-desc">${escapeHtml(c.description)}</div>
+        ${c.contact_name ? `<div class="commitment-meta" style="font-weight:600;">👤 With ${escapeHtml(c.contact_name)}</div>` : ""}
         <div class="commitment-meta">${c.commitment_type}${channelPart} · created ${formatDate(c.created_at)}${c.resolved_at ? " · resolved " + formatDate(c.resolved_at) : ""}</div>
         ${deadlineRowHtml(c)}
         ${contactAssignHtml(c)}
@@ -307,11 +308,19 @@ function commitmentItemHtml(c) {
 }
 
 function contactItemHtml(c) {
+  const open = c.open_commitments || 0;
+  const done = c.fulfilled_commitments || 0;
+  const status = open || done
+    ? `${open} open · ${done} fulfilled${c.next_deadline ? " · next: " + formatDate(c.next_deadline) : ""}`
+    : "No commitments yet";
   return `
     <div class="commitment-item" data-contact-item>
       <div style="flex:1;">
         <div class="commitment-desc">${ROLE_TAG_EMOJI[c.role_tag] || "👤"} ${escapeHtml(c.name)}</div>
         <div class="commitment-meta">${escapeHtml(c.email_or_handle)} · ${c.role_tag}</div>
+        <div class="commitment-meta" style="font-weight:600;">${status}</div>
+        <button class="deadline-edit-btn" style="margin-top:8px;" data-toggle-contact-commitments data-contact-id="${c.contact_id}">Commitments ▾</button>
+        <div data-contact-commitments="${c.contact_id}" style="display:none;"></div>
       </div>
       <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
         <button class="delete-btn" data-delete-contact data-contact-id="${c.contact_id}" title="Delete this contact">🗑</button>
@@ -587,9 +596,11 @@ async function handleSubmitMessage() {
 
 // ---------- Message connectors (WhatsApp export, Gmail sent mail) ----------
 
-let waFileText = null;
-let waChatName = null;
+let waFiles = []; // [{ name, text, chatName }]
 const WA_MAX_BYTES = 3_000_000;
+const WA_MAX_FILES = 8;
+
+function plural(n, word) { return `${n} ${word}${n === 1 ? "" : "s"}`; }
 
 function showConnectBanner(id, text, kind) {
   const el = document.getElementById(id);
@@ -601,31 +612,94 @@ function showConnectBanner(id, text, kind) {
 
 function ingestSummaryText(s) {
   const parts = [
-    `${s.processed} message${s.processed === 1 ? "" : "s"} processed`,
-    `${s.commitments_created} new commitment${s.commitments_created === 1 ? "" : "s"}`,
+    `${plural(s.processed, "message")} read`,
+    plural(s.commitments_created, "new commitment"),
     `${s.commitments_resolved} fulfilled`,
   ];
+  if (s.incoming_processed) parts.push(`${s.incoming_processed} from other people`);
+  if (s.duplicates_skipped) parts.push(`${plural(s.duplicates_skipped, "duplicate")} merged`);
   if (s.already_imported) parts.push(`${s.already_imported} already imported`);
   if (s.skipped_trivial) parts.push(`${s.skipped_trivial} too short to track`);
-  if (s.contacts_created) parts.push(`${s.contacts_created} new contact${s.contacts_created === 1 ? "" : "s"}`);
+  if (s.contacts_created) parts.push(plural(s.contacts_created, "new contact"));
   let text = `✓ ${parts.join(" · ")}`;
   if (s.aborted) text += ` — stopped early after repeated errors (${s.errors[0]}). Check the backend and GROQ_API_KEY, then run it again; nothing is lost.`;
   else if (s.errors.length) text += ` — ${s.errors.length} message(s) failed and will be retried next time.`;
   return text;
 }
 
-function renderIngestItems(containerId, items) {
-  const el = document.getElementById(containerId);
-  el.innerHTML = items.map((it) => `
-    <div class="commitment-item" style="margin-top:10px;">
-      <div class="commitment-desc">${escapeHtml(it.new_commitment || "Marked a commitment as fulfilled")}</div>
-      <div class="commitment-meta">${it.resolved_commitment_id && !it.new_commitment ? "✓ resolved · " : ""}${it.contact_name ? escapeHtml(it.contact_name) + " · " : ""}${formatDate(it.sent_at)} · "${escapeHtml(it.preview)}"</div>
-    </div>`).join("");
+function mergeSummaries(list) {
+  const sum = (k) => list.reduce((a, s) => a + (s[k] || 0), 0);
+  const people = new Map();
+  for (const s of list) {
+    for (const p of s.by_person || []) {
+      const cur = people.get(p.contact_name) ||
+        { contact_name: p.contact_name, messages: 0, commitments_created: 0, commitments_resolved: 0 };
+      cur.messages += p.messages;
+      cur.commitments_created += p.commitments_created;
+      cur.commitments_resolved += p.commitments_resolved;
+      people.set(p.contact_name, cur);
+    }
+  }
+  return {
+    processed: sum("processed"), incoming_processed: sum("incoming_processed"),
+    commitments_created: sum("commitments_created"), commitments_resolved: sum("commitments_resolved"),
+    duplicates_skipped: sum("duplicates_skipped"), already_imported: sum("already_imported"),
+    skipped_trivial: sum("skipped_trivial"), contacts_created: sum("contacts_created"),
+    errors: list.flatMap((s) => s.errors || []), aborted: list.some((s) => s.aborted),
+    items: list.flatMap((s) => s.items || []),
+    awaiting_reply: list.flatMap((s) => s.awaiting_reply || [])
+      .sort((a, b) => new Date(b.sent_at) - new Date(a.sent_at)),
+    by_person: [...people.values()],
+  };
+}
+
+// Results are grouped by PERSON so it is obvious who each promise is with.
+function renderIngestResults(containerId, s) {
+  const groups = new Map();
+  for (const it of s.items) {
+    const key = it.contact_name || "Not linked to a person";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(it);
+  }
+  let html = "";
+  for (const [person, items] of groups) {
+    const stats = (s.by_person || []).find((p) => p.contact_name === person);
+    html += `<div class="settings-label" style="margin-top:18px;">👤 ${escapeHtml(person)}` +
+      (stats ? ` <span class="commitment-meta" style="display:inline;">· ${plural(stats.commitments_created, "new commitment")}, ${stats.commitments_resolved} fulfilled</span>` : "") +
+      `</div>`;
+    html += items.map((it) => {
+      const title = it.new_commitment
+        ? `📌 ${escapeHtml(it.new_commitment)}`
+        : "✅ Marked an earlier commitment as fulfilled";
+      const when = it.deadline ? `⏰ ${formatDate(it.deadline)} · ` : "";
+      return `
+        <div class="commitment-item" style="margin-top:8px;">
+          <div>
+            <div class="commitment-desc">${title}</div>
+            <div class="commitment-meta">${when}from ${escapeHtml(it.from_name || "—")} · ${formatDate(it.sent_at)} · "${escapeHtml(it.preview)}"</div>
+          </div>
+        </div>`;
+    }).join("");
+  }
+  if (s.awaiting_reply && s.awaiting_reply.length) {
+    html += `<div class="settings-label" style="margin-top:22px;">↩️ Waiting for your reply</div>` +
+      s.awaiting_reply.map((a) => `
+        <div class="commitment-item" style="margin-top:8px;">
+          <div>
+            <div class="commitment-desc">${escapeHtml(a.contact_name)} is waiting to hear back</div>
+            <div class="commitment-meta">${formatDate(a.sent_at)} · "${escapeHtml(a.preview)}"</div>
+          </div>
+        </div>`).join("");
+  }
+  document.getElementById(containerId).innerHTML = html;
 }
 
 async function refreshAfterIngest() {
+  // Contacts first: commitment cards show their person from this cache, and
+  // a contact created by the import must be in it before they render.
+  await fetchContactsCache();
   await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar(),
-                     fetchContactsCache(), fetchConnectorStatus()]);
+                     fetchConnectorStatus()]);
 }
 
 async function fetchConnectorStatus() {
@@ -634,70 +708,101 @@ async function fetchConnectorStatus() {
     for (const [key, id] of [["whatsapp", "waStatus"], ["gmail", "gmStatus"]]) {
       const { messages, last_synced_at } = st[key];
       document.getElementById(id).textContent = messages
-        ? `${messages} message${messages === 1 ? "" : "s"} imported so far · last ${formatDate(last_synced_at)}`
+        ? `${plural(messages, "message")} imported so far · last ${formatDate(last_synced_at)}`
         : "Nothing imported yet.";
     }
   } catch (err) { /* status line is optional; the cards still work without it */ }
 }
 
 async function handleWhatsAppFile(e) {
-  const file = e.target.files[0];
+  const files = Array.from(e.target.files);
   const pickRow = document.getElementById("waPickRow");
   const hint = document.getElementById("waPickHint");
   pickRow.style.display = "none";
   hint.style.display = "none";
   document.getElementById("waResult").style.display = "none";
-  waFileText = null;
-  if (!file) return;
+  document.getElementById("waItems").innerHTML = "";
+  waFiles = [];
+  if (!files.length) return;
 
-  if (file.size > WA_MAX_BYTES) {
-    showConnectBanner("waResult", "That file is too large (limit ~3 MB). Export without media, or a shorter date range.", "none");
-    return;
-  }
-  if (/\.zip$/i.test(file.name)) {
-    showConnectBanner("waResult", "That's a .zip — unzip it and choose the _chat.txt / .txt file inside.", "none");
+  if (files.length > WA_MAX_FILES) {
+    showConnectBanner("waResult", `Pick at most ${WA_MAX_FILES} chats at a time.`, "none");
     return;
   }
 
+  const sightings = new Map(); // sender name -> { messages }
+  const namesPerChat = [];      // one Set of names per chat that has 2+ people
+  let totalMessages = 0;
   try {
-    waFileText = await file.text();
-    const nameMatch = file.name.match(/WhatsApp Chat (?:with|-) (.+?)(?:\.txt)?$/i);
-    waChatName = nameMatch ? nameMatch[1].trim() : null;
-
-    const info = await inspectWhatsApp(waFileText);
-    const select = document.getElementById("waMyName");
-    select.innerHTML = info.participants
-      .map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.message_count})</option>`)
-      .join("");
-    hint.textContent = `Found ${info.total_messages} messages. Choose which person is you.`;
-    hint.style.display = "block";
-    pickRow.style.display = "flex";
+    for (const file of files) {
+      if (file.size > WA_MAX_BYTES) throw new Error(`"${file.name}" is too large (limit ~3 MB). Export without media.`);
+      if (/\.zip$/i.test(file.name)) throw new Error(`"${file.name}" is a .zip — unzip it and choose the .txt inside.`);
+      const text = await file.text();
+      const nameMatch = file.name.match(/WhatsApp Chat (?:with|-) (.+?)(?:\.txt)?$/i);
+      const info = await inspectWhatsApp(text).catch((err) => { throw new Error(`${file.name}: ${err.message}`); });
+      waFiles.push({ name: file.name, text, chatName: nameMatch ? nameMatch[1].trim() : null });
+      totalMessages += info.total_messages;
+      for (const p of info.participants) {
+        const cur = sightings.get(p.name) || { messages: 0 };
+        cur.messages += p.message_count;
+        sightings.set(p.name, cur);
+      }
+      // A chat where only the other person wrote (you never replied) can't
+      // tell us who "you" are, so it must not veto the candidates.
+      if (info.participants.length > 1) namesPerChat.push(new Set(info.participants.map((p) => p.name)));
+    }
   } catch (err) {
-    waFileText = null;
+    waFiles = [];
     showConnectBanner("waResult", err.message, "none");
+    return;
   }
+
+  // "Me" is whoever appears in every chat that has 2+ people; if that
+  // narrows nothing down (e.g. a single chat), offer everyone.
+  let candidates = [...sightings.entries()].filter(([name]) => namesPerChat.every((set) => set.has(name)));
+  if (!candidates.length || !namesPerChat.length) candidates = [...sightings.entries()];
+  candidates.sort((a, b) => b[1].messages - a[1].messages);
+  document.getElementById("waMyName").innerHTML = candidates
+    .map(([name, v]) => `<option value="${escapeHtml(name)}">${escapeHtml(name)} (${v.messages})</option>`)
+    .join("");
+  hint.textContent = `${plural(waFiles.length, "chat")} · ${plural(totalMessages, "message")} found. Choose which person is you.`;
+  hint.style.display = "block";
+  pickRow.style.display = "block";
 }
 
 async function handleWhatsAppImport() {
-  if (!waFileText) return;
+  if (!waFiles.length) return;
   const btn = document.getElementById("waImportBtn");
   btn.disabled = true;
   btn.textContent = "Importing...";
   document.getElementById("waResult").style.display = "none";
   document.getElementById("waItems").innerHTML = "";
+
+  const myName = document.getElementById("waMyName").value;
+  const maxMessages = Number(document.getElementById("waMax").value);
+  const includeIncoming = document.getElementById("waIncoming").checked;
+  const summaries = [];
+  const failed = [];
   try {
-    const summary = await importWhatsApp({
-      text: waFileText,
-      myName: document.getElementById("waMyName").value,
-      chatName: waChatName,
-      maxMessages: Number(document.getElementById("waMax").value),
-    });
-    showConnectBanner("waResult", ingestSummaryText(summary),
-      summary.commitments_created || summary.commitments_resolved ? "extracted" : "none");
-    renderIngestItems("waItems", summary.items);
-    await refreshAfterIngest();
-  } catch (err) {
-    showConnectBanner("waResult", err.message, "none");
+    for (const f of waFiles) {
+      btn.textContent = `Importing ${summaries.length + failed.length + 1}/${waFiles.length}...`;
+      try {
+        summaries.push(await importWhatsApp({ text: f.text, myName, chatName: f.chatName, maxMessages, includeIncoming }));
+      } catch (err) {
+        failed.push(`${f.name}: ${err.message}`);
+      }
+    }
+    if (summaries.length) {
+      const merged = mergeSummaries(summaries);
+      let text = ingestSummaryText(merged);
+      if (failed.length) text += ` — skipped ${failed.length} chat(s): ${failed.join(" | ")}`;
+      showConnectBanner("waResult", text,
+        merged.commitments_created || merged.commitments_resolved ? "extracted" : "none");
+      renderIngestResults("waItems", merged);
+      await refreshAfterIngest();
+    } else {
+      showConnectBanner("waResult", failed.join(" | "), "none");
+    }
   } finally {
     btn.disabled = false;
     btn.textContent = "Import";
@@ -725,13 +830,45 @@ async function handleGmailSync() {
     passwordInput.value = ""; // never keep the secret in the page after use
     showConnectBanner("gmResult", ingestSummaryText(summary),
       summary.commitments_created || summary.commitments_resolved ? "extracted" : "none");
-    renderIngestItems("gmItems", summary.items);
+    renderIngestResults("gmItems", summary);
     await refreshAfterIngest();
   } catch (err) {
     showConnectBanner("gmResult", err.message, "none");
   } finally {
     btn.disabled = false;
     btn.textContent = "Sync sent mail";
+  }
+}
+
+// Contacts page: expand a person to see everything tied to them.
+async function handleToggleContactCommitments(e) {
+  const btn = e.target.closest("[data-toggle-contact-commitments]");
+  if (!btn) return;
+  const id = btn.dataset.contactId;
+  const box = document.querySelector(`[data-contact-commitments="${id}"]`);
+  if (!box) return;
+  if (box.style.display !== "none") {
+    box.style.display = "none";
+    btn.textContent = "Commitments ▾";
+    return;
+  }
+  btn.disabled = true;
+  try {
+    const items = await getContactCommitments(id);
+    box.innerHTML = items.length
+      ? items.map((c) => `
+          <div class="commitment-meta" style="margin-top:8px;">
+            ${badgeHtml(c.state)} <b>${escapeHtml(c.description)}</b>
+            ${c.inferred_deadline ? " · ⏰ " + formatDate(c.inferred_deadline) : ""}
+            ${c.channel ? " · via " + (CHANNEL_LABELS[c.channel] || c.channel) : ""}
+          </div>`).join("")
+      : `<div class="commitment-meta" style="margin-top:8px;">Nothing tracked with this person yet.</div>`;
+    box.style.display = "block";
+    btn.textContent = "Commitments ▴";
+  } catch (err) {
+    showError(err.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -793,6 +930,7 @@ function wireNav() {
   document.getElementById("waFile")?.addEventListener("change", handleWhatsAppFile);
   document.getElementById("waImportBtn")?.addEventListener("click", handleWhatsAppImport);
   document.getElementById("gmSyncBtn")?.addEventListener("click", handleGmailSync);
+  document.addEventListener("click", handleToggleContactCommitments);
   document.getElementById("settingsPersonaSaveBtn")?.addEventListener("click", handleSavePersona);
   document.getElementById("settingsLogoutBtn")?.addEventListener("click", logout);
   document.querySelectorAll(".channel-option").forEach((btn) => {

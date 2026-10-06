@@ -16,6 +16,10 @@ Handles both export layouts:
 including 12h/24h clocks, 2- or 4-digit years, multi-line messages, and the
 invisible left-to-right marks iOS inserts.
 
+Everyone's messages are parsed (direction + sender recorded) so replies can
+be understood in context; in a group chat each message is attributed to the
+person it concerns (see _attribute_group_message).
+
 Date order (DD/MM vs MM/DD) is not recorded in the file, so it is inferred
 from the data: any date whose first number is >12 proves day-first, any
 whose second number is >12 proves month-first. If the whole file is
@@ -177,7 +181,49 @@ def inspect_chat(text: str, date_order: str = "auto") -> dict:
     }
 
 
-def parse_chat(
+_WORD_CACHE: dict[str, re.Pattern] = {}
+
+
+def _name_pattern(token: str) -> re.Pattern:
+    if token not in _WORD_CACHE:
+        _WORD_CACHE[token] = re.compile(rf"(?<![\w]){re.escape(token)}(?![\w])", re.IGNORECASE)
+    return _WORD_CACHE[token]
+
+
+def _mentioned_people(body: str, others: list[str]) -> list[str]:
+    """Participants whose full name or first name appears in the text."""
+    found = []
+    for name in others:
+        tokens = {name, name.split()[0]}
+        if any(len(t) >= 3 and _name_pattern(t).search(body) for t in tokens):
+            found.append(name)
+    return found
+
+
+def _attribute_group_message(index: int, entries: list, me: str, others: list[str]) -> str | None:
+    """
+    Which group member does the user's message at `index` concern?
+      1. exactly one member is named in the text ("Sure Rahul, ...") → them
+      2. else the person who spoke last within 20 minutes before it, i.e.
+         the one being replied to
+      3. else nobody (the caller falls back to the chat name)
+    Heuristics, not mind-reading — deterministic so they are testable, and
+    wrong guesses only mis-label the contact, never lose the commitment.
+    """
+    sender, body, sent_at = entries[index]
+    named = _mentioned_people(body, others)
+    if len(named) == 1:
+        return named[0]
+    for j in range(index - 1, -1, -1):
+        prev_sender, _, prev_at = entries[j]
+        if (sent_at - prev_at).total_seconds() > 20 * 60:
+            break
+        if prev_sender != me:
+            return prev_sender
+    return None
+
+
+def parse_chat_all(
     text: str,
     my_name: str,
     chat_name: str | None = None,
@@ -185,53 +231,90 @@ def parse_chat(
     utc_offset_minutes: int = 0,
 ) -> list[ParsedMessage]:
     """
-    Returns the user's OWN messages from the chat, oldest first.
-
-    my_name must match a sender in the file (case-insensitive). The other
-    side of a 1:1 chat is used as the counterparty; for a group chat pass
-    chat_name (the UI derives it from the "WhatsApp Chat with X" filename).
+    Every message in the chat (both directions), oldest first, each tagged
+    with direction, sender and the person it is with. Use parse_chat() if
+    only the user's own messages are wanted.
     """
     if len(text) > MAX_TEXT_CHARS:
         raise ConnectorError("Chat file is too large (limit ~3 MB of text).")
 
-    entries = [
-        (s, b, t)
-        for s, raw, t in _raw_entries(text, date_order, utc_offset_minutes)
-        if (b := _clean_body(raw)) is not None
-    ]
+    entries = sorted(
+        (
+            (s, b, t)
+            for s, raw, t in _raw_entries(text, date_order, utc_offset_minutes)
+            if (b := _clean_body(raw)) is not None
+        ),
+        key=lambda e: e[2],
+    )
     senders = {s for s, _, _ in entries}
     me = next((s for s in senders if s.strip().lower() == my_name.strip().lower()), None)
-    if me is None:
+    if me is None and len(senders) > 1:
         raise ConnectorError(
             f"'{my_name}' doesn't appear in this chat. Names found: "
             + ", ".join(sorted(senders))
         )
+    # me is None with a single speaker: the user never replied in this chat.
+    # That is a normal, valuable case ("someone is waiting to hear back"),
+    # so every message is treated as incoming rather than rejecting the file.
+    # (With 2+ speakers an unknown name is far more likely a wrong pick.)
 
     others = sorted(senders - {me})
-    counterparty = chat_name or (others[0] if len(others) == 1 else None)
+    is_group = len(others) > 1
     chat_key = (chat_name or ",".join(sorted(senders))).lower()
+    one_to_one_name = others[0] if len(others) == 1 else None
 
     seen: Counter[str] = Counter()
     out: list[ParsedMessage] = []
-    for sender, body, sent_at in sorted(entries, key=lambda e: e[2]):
-        if sender != me:
-            continue
-        # Hash of chat + the timestamp exactly as written in the file + text,
-        # plus an occurrence counter so two identical "ok" messages in the
-        # same minute stay distinct. The timestamp is rebuilt WITHOUT the
-        # UTC offset, so re-importing the same file from a browser in a
-        # different timezone (travel, DST) still produces the same ids and
-        # is correctly recognised as already imported.
+    for i, (sender, body, sent_at) in enumerate(entries):
+        outbound = sender == me
         local_stamp = (sent_at + timedelta(minutes=utc_offset_minutes)).replace(tzinfo=None).isoformat()
-        base = hashlib.sha1(f"{chat_key}|{local_stamp}|{body}".encode()).hexdigest()[:24]
+
+        if outbound:
+            # Hash of chat + the timestamp exactly as written in the file +
+            # text, plus an occurrence counter so two identical "ok"
+            # messages in the same minute stay distinct. The timestamp is
+            # rebuilt WITHOUT the UTC offset, so re-importing the same file
+            # from a browser in a different timezone (travel, DST) still
+            # produces the same ids and is recognised as already imported.
+            # (Formula unchanged from the first version so messages
+            # imported earlier still de-duplicate.)
+            base = hashlib.sha1(f"{chat_key}|{local_stamp}|{body}".encode()).hexdigest()[:24]
+            prefix = "wa"
+            counterparty = (
+                one_to_one_name
+                or (_attribute_group_message(i, entries, me, others) if is_group else None)
+                or chat_name
+            )
+        else:
+            base = hashlib.sha1(f"{chat_key}|{local_stamp}|{sender}|{body}".encode()).hexdigest()[:24]
+            prefix = "wa-in"
+            counterparty = sender
         seen[base] += 1
         out.append(
             ParsedMessage(
                 channel="whatsapp",
-                external_id=f"wa:{base}:{seen[base]}",
+                external_id=f"{prefix}:{base}:{seen[base]}",
                 body=body,
                 sent_at=sent_at,
                 counterparty_name=counterparty,
+                direction="outbound" if outbound else "inbound",
+                sender_name=sender,
+                thread_key=chat_key,
             )
         )
     return out
+
+
+def parse_chat(
+    text: str,
+    my_name: str,
+    chat_name: str | None = None,
+    date_order: str = "auto",
+    utc_offset_minutes: int = 0,
+) -> list[ParsedMessage]:
+    """The user's OWN messages only, oldest first (see parse_chat_all)."""
+    return [
+        m
+        for m in parse_chat_all(text, my_name, chat_name, date_order, utc_offset_minutes)
+        if m.direction == "outbound"
+    ]
