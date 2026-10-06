@@ -13,6 +13,10 @@
 </head>
 <body>
 
+<!-- Ambient 3D background — fixed, full-screen, pointer-events:none so
+     it can never intercept clicks/drags/typing in the real app above it. -->
+<canvas id="threeBackgroundCanvas" class="three-background-canvas"></canvas>
+
 <!-- Auth screen — shown until a valid token exists in localStorage;
      hidden (and app-shell shown) once login/signup succeeds. -->
 <div id="authScreen" class="auth-screen">
@@ -75,6 +79,9 @@
       </li>
       <li class="nav-item" data-view="actions">
         <span class="nav-icon">📅</span><span class="label">Calendar</span>
+      </li>
+      <li class="nav-item" data-view="connect">
+        <span class="nav-icon">🔌</span><span class="label">Connect</span>
       </li>
       <li class="nav-item" data-view="settings">
         <span class="nav-icon">⚙️</span><span class="label">Settings</span>
@@ -240,6 +247,60 @@
       <div class="card" data-animate>
         <div class="section-title">No Deadline Set</div>
         <div id="calendarNoDeadlineList"></div>
+      </div>
+    </section>
+
+    <section id="view-connect" class="view">
+      <div class="card" data-animate>
+        <div class="section-title">WhatsApp chat import</div>
+        <p class="settings-hint">
+          In WhatsApp open a chat → ⋮ / contact name → <b>Export chat</b> → <b>Without media</b>,
+          then choose the .txt file here. Only <b>your own</b> messages are read and stored — the other
+          person's messages are ignored. Importing the same chat again never creates duplicates.
+        </p>
+        <div class="contact-form-row">
+          <input type="file" id="waFile" accept=".txt,text/plain" class="contact-input" />
+        </div>
+        <div class="contact-form-row" id="waPickRow" style="display:none; margin-top:10px;">
+          <select id="waMyName" class="contact-input"></select>
+          <select id="waMax" class="contact-input">
+            <option value="25">Latest 25</option>
+            <option value="50" selected>Latest 50</option>
+            <option value="100">Latest 100</option>
+            <option value="200">Latest 200</option>
+          </select>
+          <button class="primary" id="waImportBtn">Import</button>
+        </div>
+        <div class="settings-hint" id="waPickHint" style="display:none; margin:8px 0 0;"></div>
+        <div id="waResult" class="result-banner" style="display:none;"></div>
+        <div id="waItems"></div>
+        <div class="settings-hint" id="waStatus" style="margin:12px 0 0;"></div>
+      </div>
+
+      <div class="card" data-animate>
+        <div class="section-title">Gmail (sent mail)</div>
+        <p class="settings-hint">
+          Reads the emails <b>you sent</b> to find promises you made and detect when a later email fulfils
+          one. Use a Google <b>app password</b> (Google Account → Security → 2-Step Verification → App passwords;
+          <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener">myaccount.google.com/apppasswords</a>),
+          not your normal password. It is used for this sync only and is never stored. School/work accounts
+          often disable app passwords — a personal Gmail works.
+        </p>
+        <div class="contact-form-row">
+          <input type="email" id="gmAddress" placeholder="you@gmail.com" class="contact-input" autocomplete="off" />
+          <input type="password" id="gmAppPassword" placeholder="16-character app password" class="contact-input" autocomplete="off" />
+        </div>
+        <div class="contact-form-row" style="margin-top:10px;">
+          <select id="gmDays" class="contact-input">
+            <option value="7">Last 7 days</option>
+            <option value="14" selected>Last 14 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+          <button class="primary" id="gmSyncBtn">Sync sent mail</button>
+        </div>
+        <div id="gmResult" class="result-banner" style="display:none;"></div>
+        <div id="gmItems"></div>
+        <div class="settings-hint" id="gmStatus" style="margin:12px 0 0;"></div>
       </div>
     </section>
 

@@ -183,3 +183,34 @@ evaluation. WhatsApp specifically is flagged as blocked on Meta's
 Business API approval process regardless of available dev time, so
 starting that conversation early matters if it's a real priority later.
 *(Source: chat, July 21st)*
+
+---
+
+### ADR-018: Message-Reading Connectors via Gmail IMAP and WhatsApp Chat Export (Phase 1)
+**Context:** The student-level Phase 1 submission requires VachanAI to read
+messages itself instead of relying on manual paste. ADR-017 deferred real
+connectors because OAuth app verification (Gmail API) and Meta's Business
+API approval (WhatsApp) are external processes outside the team's control.
+**Decision:** Supersedes the "no real connectors" part of ADR-017 with two
+connectors that need no external approval:
+- **Gmail:** read the user's *Sent* folder over IMAP using a Google app
+  password. The folder is opened read-only, messages are fetched with
+  BODY.PEEK, and the password is used for one request and never stored or
+  logged.
+- **WhatsApp:** import the `.txt` produced by WhatsApp's own "Export chat".
+  Only the user's own messages are kept.
+Both produce a shared `ParsedMessage` type and feed one ingestion service
+(de-duplicate by stable external id → oldest-first → existing resolution
+check + extraction → link/create contact). Only the user's *sent* messages
+are used because VachanAI tracks promises the user made and detects the
+user's own later fulfilment; other people's messages are never stored.
+**Consequences:** Works today, free, with no third-party approval. Not live
+or push-based: the user triggers a sync/import. Gmail app passwords need
+2-Step Verification and are often disabled on school/work accounts, and
+handling a password is weaker than OAuth — the Phase 2 upgrade path is the
+Gmail API with OAuth (`gmail.readonly`) behind the same `ParsedMessage`
+interface, and the WhatsApp Business API once approved. Importing is capped
+per run (and trivial replies skipped) to bound LLM cost; repeated runs walk
+further back in time.
+*(Source: Phase 1 submission requirement, Oct 2026)*
+

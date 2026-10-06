@@ -56,6 +56,11 @@ A detailed design brief was provided (referenced in full in chat history around 
 
 ---
 
+> **Update (Oct 2026):** Auth is built, and a first version of message reading
+> now ships in Phase 1 — Gmail *sent mail* via IMAP + app password and WhatsApp
+> via chat-export import (see ADR-018). What remains here is the *live* version:
+> Gmail API with OAuth, and the WhatsApp Business API once Meta approves it.
+
 ## Suggested Sequencing (When Phase 2 Actually Starts)
 
 1. Auth first — nothing else in this list works safely without it

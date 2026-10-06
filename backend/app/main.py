@@ -18,6 +18,7 @@ from app.models.database import init_db
 from app.routers.commitments import router as commitments_router
 from app.routers.contacts import router as contacts_router
 from app.routers.auth import router as auth_router
+from app.routers.connectors import router as connectors_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(commitments_router, prefix="/api/v1")
 app.include_router(contacts_router, prefix="/api/v1")
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(connectors_router, prefix="/api/v1")
 @app.get("/health")
 def health():
     return {"status": "ok"}

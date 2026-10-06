@@ -18,6 +18,13 @@ groq==0.31.0
 sqlalchemy==2.0.35
 python-dotenv==1.0.1
 
+# Added: already imported by the auth layer but missing from this file, so a
+# fresh `pip install -r requirements.txt` failed at import time.
+PyJWT==2.7.0
+bcrypt==5.0.0
+email-validator==2.3.0
+
 # testing
 pytest==8.3.3
 pytest-cov==5.0.0
+httpx==0.28.1  # required by FastAPI's TestClient

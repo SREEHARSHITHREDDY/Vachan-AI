@@ -52,7 +52,14 @@ def _get_demo_user_id(db: Session) -> str:
 
 
 def process_incoming_message(
-    db: Session, body: str, user_id: str, channel: str = "message"
+    db: Session,
+    body: str,
+    user_id: str,
+    channel: str = "message",
+    *,
+    contact_id: str | None = None,
+    sent_at: datetime | None = None,
+    external_id: str | None = None,
 ) -> MessageProcessResult:
     """
     The full closed loop, run for real against the database: save the
@@ -65,13 +72,30 @@ def process_incoming_message(
     channel: "message" (typed text/email), "call", or "in-person" — see
     MessageIn's docstring (schemas/api.py) for why this distinction exists
     and what it does/doesn't change about how the pipeline processes it.
+    Connectors add "gmail" and "whatsapp".
+
+    Keyword-only extras, all used by the connector ingestion path
+    (app/services/ingestion_service.py) and all defaulting to the old
+    behaviour so manual submissions are unchanged:
+      contact_id   — links the stored message AND any new commitment to a
+                     contact (the manual path leaves this to the user).
+      sent_at      — the message's real timestamp. Also passed to the
+                     extractor so "by Friday" resolves against when the
+                     message was written, not when it was imported.
+      external_id  — source-side identifier used for de-duplication. If
+                     processing fails for a message that has one, the
+                     stored row is removed again so a later re-sync can
+                     retry it instead of treating it as already done.
     """
+    event_time = sent_at or datetime.now(timezone.utc)
     message = Message(
         user_id=user_id,
+        contact_id=contact_id,
         channel=channel,
         direction="outbound",
         body_ref=body,
-        sent_at=datetime.now(timezone.utc),
+        sent_at=event_time,
+        external_id=external_id,
     )
     db.add(message)
     db.commit()
@@ -79,59 +103,76 @@ def process_incoming_message(
 
     result = MessageProcessResult()
 
-    open_commitments = (
-        db.query(Commitment)
-        .filter(
-            Commitment.user_id == user_id,
-            Commitment.state.in_(["pending", "at-risk"]),
-            Commitment.is_deleted.is_(False),
+    try:
+        open_commitments = (
+            db.query(Commitment)
+            .filter(
+                Commitment.user_id == user_id,
+                Commitment.state.in_(["pending", "at-risk"]),
+                Commitment.is_deleted.is_(False),
+            )
+            .all()
         )
-        .all()
-    )
 
-    if open_commitments:
-        summaries = [
-            OpenCommitmentSummary(
-                commitment_id=c.commitment_id, description=c.description
-            )
-            for c in open_commitments
-        ]
-        tracker = LifecycleTracker()
-        resolution = tracker.check_for_resolution(body, summaries)
+        if open_commitments:
+            summaries = [
+                OpenCommitmentSummary(
+                    commitment_id=c.commitment_id, description=c.description
+                )
+                for c in open_commitments
+            ]
+            tracker = LifecycleTracker()
+            resolution = tracker.check_for_resolution(body, summaries)
 
-        if resolution.resolved and resolution.resolved_commitment_id:
-            matched = next(
-                c for c in open_commitments
-                if c.commitment_id == str(resolution.resolved_commitment_id)
-            )
-            matched.state = "fulfilled"
-            matched.resolved_at = datetime.now(timezone.utc)
+            if resolution.resolved and resolution.resolved_commitment_id:
+                matched = next(
+                    c for c in open_commitments
+                    if c.commitment_id == str(resolution.resolved_commitment_id)
+                )
+                matched.state = "fulfilled"
+                matched.resolved_at = event_time
+                db.commit()
+                result.resolved_commitment_id = matched.commitment_id
+                result.resolution_reasoning = resolution.reasoning
+
+        settings = get_settings()
+        if settings.groq_api_key:
+            extractor = ExtractionService()
+            if sent_at is not None:
+                extraction = extractor.extract(body, reference_time=sent_at)
+            else:
+                extraction = extractor.extract(body)
+
+            if extraction.is_commitment:
+                new_commitment = Commitment(
+                    user_id=user_id,
+                    contact_id=contact_id,
+                    source_message_id=message.message_id,
+                    commitment_type=extraction.commitment_type.value
+                    if hasattr(extraction.commitment_type, "value")
+                    else extraction.commitment_type,
+                    description=extraction.description,
+                    starts_at=extraction.inferred_start,
+                    inferred_deadline=extraction.inferred_deadline,
+                    state="pending",
+                )
+                db.add(new_commitment)
+                db.commit()
+                db.refresh(new_commitment)
+                result.new_commitment = CommitmentOut.model_validate(new_commitment)
+                result.new_commitment.channel = channel
+
+    except Exception:
+        # Connector-ingested message: undo the stored row so the next
+        # sync retries it (otherwise its external_id would mark it as
+        # already processed even though the LLM step never completed).
+        # Manual submissions keep the old behaviour (row stays, error
+        # propagates).
+        if external_id is not None:
+            db.rollback()
+            db.delete(message)
             db.commit()
-            result.resolved_commitment_id = matched.commitment_id
-            result.resolution_reasoning = resolution.reasoning
-
-    settings = get_settings()
-    if settings.groq_api_key:
-        extractor = ExtractionService()
-        extraction = extractor.extract(body)
-
-        if extraction.is_commitment:
-            new_commitment = Commitment(
-                user_id=user_id,
-                source_message_id=message.message_id,
-                commitment_type=extraction.commitment_type.value
-                if hasattr(extraction.commitment_type, "value")
-                else extraction.commitment_type,
-                description=extraction.description,
-                starts_at=extraction.inferred_start,
-                inferred_deadline=extraction.inferred_deadline,
-                state="pending",
-            )
-            db.add(new_commitment)
-            db.commit()
-            db.refresh(new_commitment)
-            result.new_commitment = CommitmentOut.model_validate(new_commitment)
-            result.new_commitment.channel = channel
+        raise
 
     return result
 

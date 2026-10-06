@@ -103,6 +103,13 @@ class Message(Base):
     direction: Mapped[str] = mapped_column(String(10), nullable=False)
     body_ref: Mapped[str] = mapped_column(Text, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    # Stable source-side identifier for messages pulled in by a connector
+    # (Gmail Message-ID, or a deterministic hash for WhatsApp export lines).
+    # Lets re-running a sync/import skip messages already ingested for this
+    # user. NULL for manually typed messages. Added in the Phase 1
+    # message-reading work; see ADR-018 and init_db()'s lightweight
+    # migration for how existing demo databases pick up the column.
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     ingested_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, nullable=False)
 
     user: Mapped["User"] = relationship(back_populates="messages")

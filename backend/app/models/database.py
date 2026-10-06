@@ -49,3 +49,26 @@ def init_db() -> None:
     from app.models import db_models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _apply_lightweight_migrations()
+
+
+def _apply_lightweight_migrations() -> None:
+    """
+    create_all() only creates MISSING TABLES — it never adds columns to a
+    table that already exists. A demo database file created before the
+    message-reading work therefore has a `messages` table without
+    `external_id`, and every query touching Message would fail with
+    "no such column". This adds the column in place (SQLite only; a real
+    Postgres deployment would use proper migration tooling, per the
+    deferred item in the Database Design doc, Section 4.7).
+    """
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as conn:
+        cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(messages)")}
+        if cols and "external_id" not in cols:
+            conn.exec_driver_sql("ALTER TABLE messages ADD COLUMN external_id VARCHAR(255)")
+        if cols:
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_messages_external_id ON messages (external_id)"
+            )

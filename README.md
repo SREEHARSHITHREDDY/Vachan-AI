@@ -52,6 +52,17 @@ cp .env.example .env
 # Edit .env and add your real ANTHROPIC_API_KEY
 ```
 
+## Reading Messages (Gmail + WhatsApp)
+
+Open the **Connect** tab after logging in. Needs `GROQ_API_KEY` set (extraction runs on every imported message).
+
+- **WhatsApp:** in WhatsApp, open a chat → *Export chat* → *Without media*, choose the `.txt` here, pick which participant is you, and import. Only your own messages are read; re-importing never duplicates.
+- **Gmail:** create a Google *app password* (needs 2-Step Verification), enter your address + the app password, and sync. Reads your **sent** mail only; the password is used for that request and never stored. Personal Gmail works best — school/work accounts often disable app passwords.
+
+Imported messages go through the same loop as manual ones: a later message such as "Sent the notes" can mark an earlier promise fulfilled, and the other party becomes a Contact. See ADR-018 for the design and its limits.
+
+Endpoints (all authenticated): `POST /api/v1/connectors/whatsapp/inspect`, `POST /api/v1/connectors/whatsapp/import`, `POST /api/v1/connectors/gmail/sync`, `GET /api/v1/connectors/status`.
+
 ## Running Tests
 
 ```bash

@@ -22,6 +22,7 @@ FEW_SHOT_EXAMPLES with your real labeled set.
 """
 
 import re
+from datetime import datetime
 
 from app.core.llm_client import LLMClient
 from app.schemas.commitment import ExtractionResult
@@ -187,7 +188,9 @@ class ExtractionService:
         # without hitting the real API — see tests/test_extraction_service.py
         self._llm_client = llm_client or LLMClient()
 
-    def extract(self, raw_message: str) -> ExtractionResult:
+    def extract(
+        self, raw_message: str, reference_time: datetime | None = None
+    ) -> ExtractionResult:
         """
         Classifies a single message and returns a validated ExtractionResult.
 
@@ -197,6 +200,19 @@ class ExtractionService:
         not silently passed downstream.
         """
         cleaned_message = strip_signature_and_quotes(raw_message)
+        if reference_time is not None:
+            # Only used for messages ingested from a connector, where the
+            # message was written in the past: relative phrases like
+            # "by Friday" must resolve against when it was SENT, not
+            # against whenever the import happens to run. Left out
+            # entirely for live/manual messages so the prompt (and the
+            # measured precision baseline) is unchanged for them.
+            cleaned_message = (
+                f"[This message was sent on "
+                f"{reference_time.strftime('%A, %d %B %Y, %H:%M')} UTC. "
+                f"Resolve relative dates such as 'Friday' or 'tomorrow' "
+                f"against that date.]\n{cleaned_message}"
+            )
         user_content = _build_user_content(cleaned_message)
 
         raw_result = self._llm_client.get_structured_response(

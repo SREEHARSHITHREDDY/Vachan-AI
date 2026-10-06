@@ -13,10 +13,12 @@ import {
   getDigest, getCommitments, postMessage, updateCommitment, deleteCommitment,
   getContacts, createContact, updateContact, deleteContact,
   getMe, updateMe,
+  inspectWhatsApp, importWhatsApp, syncGmail, getConnectorStatus,
 } from "./api.js";
 import { initTheme, toggleTheme } from "./theme.js";
-import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp } from "./animations.js";
+import { initAnimations, fadeInStagger, slideInList, fadeInBanner, countUp, scrollReveal3D } from "./animations.js";
 import { initAuthScreen, logout } from "./auth.js";
+import { initThreeBackground } from "./three-background.js";
 
 let lastCounts = { atRisk: 0, pending: 0, fulfilled: 0 };
 let calendarState = { year: new Date().getFullYear(), month: new Date().getMonth() };
@@ -124,6 +126,8 @@ const CHANNEL_LABELS = {
   message: "Message",
   call: "Call",
   "in-person": "In-Person",
+  gmail: "Gmail",
+  whatsapp: "WhatsApp",
 };
 
 // ---------- View switching ----------
@@ -141,6 +145,15 @@ function switchView(viewName) {
   if (viewName === "actions") { fetchCalendar(); }
   if (viewName === "contacts") { fetchContacts(); }
   if (viewName === "settings") { fetchSettings(); }
+  if (viewName === "connect") { fetchConnectorStatus(); }
+
+  // Scroll-triggered 3D reveal has to (re-)run AFTER the section is
+  // actually visible — an element inside a display:none view has no
+  // layout box, so a scroll observer attached while it's hidden won't
+  // reliably fire once it becomes visible. Scoped to just the newly
+  // active view, not the whole document, so already-revealed elements
+  // in other views don't get re-triggered every time you switch tabs.
+  scrollReveal3D(`#view-${viewName}[class*="active"] [data-animate]`);
 }
 
 // ---------- Rendering helpers ----------
@@ -572,6 +585,156 @@ async function handleSubmitMessage() {
   }
 }
 
+// ---------- Message connectors (WhatsApp export, Gmail sent mail) ----------
+
+let waFileText = null;
+let waChatName = null;
+const WA_MAX_BYTES = 3_000_000;
+
+function showConnectBanner(id, text, kind) {
+  const el = document.getElementById(id);
+  el.textContent = text;
+  el.className = `result-banner ${kind}`;
+  el.style.display = "block";
+  fadeInBanner(el);
+}
+
+function ingestSummaryText(s) {
+  const parts = [
+    `${s.processed} message${s.processed === 1 ? "" : "s"} processed`,
+    `${s.commitments_created} new commitment${s.commitments_created === 1 ? "" : "s"}`,
+    `${s.commitments_resolved} fulfilled`,
+  ];
+  if (s.already_imported) parts.push(`${s.already_imported} already imported`);
+  if (s.skipped_trivial) parts.push(`${s.skipped_trivial} too short to track`);
+  if (s.contacts_created) parts.push(`${s.contacts_created} new contact${s.contacts_created === 1 ? "" : "s"}`);
+  let text = `✓ ${parts.join(" · ")}`;
+  if (s.aborted) text += ` — stopped early after repeated errors (${s.errors[0]}). Check the backend and GROQ_API_KEY, then run it again; nothing is lost.`;
+  else if (s.errors.length) text += ` — ${s.errors.length} message(s) failed and will be retried next time.`;
+  return text;
+}
+
+function renderIngestItems(containerId, items) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = items.map((it) => `
+    <div class="commitment-item" style="margin-top:10px;">
+      <div class="commitment-desc">${escapeHtml(it.new_commitment || "Marked a commitment as fulfilled")}</div>
+      <div class="commitment-meta">${it.resolved_commitment_id && !it.new_commitment ? "✓ resolved · " : ""}${it.contact_name ? escapeHtml(it.contact_name) + " · " : ""}${formatDate(it.sent_at)} · "${escapeHtml(it.preview)}"</div>
+    </div>`).join("");
+}
+
+async function refreshAfterIngest() {
+  await Promise.all([fetchDigest(), fetchCommitments(), fetchBoard(), fetchCalendar(),
+                     fetchContactsCache(), fetchConnectorStatus()]);
+}
+
+async function fetchConnectorStatus() {
+  try {
+    const st = await getConnectorStatus();
+    for (const [key, id] of [["whatsapp", "waStatus"], ["gmail", "gmStatus"]]) {
+      const { messages, last_synced_at } = st[key];
+      document.getElementById(id).textContent = messages
+        ? `${messages} message${messages === 1 ? "" : "s"} imported so far · last ${formatDate(last_synced_at)}`
+        : "Nothing imported yet.";
+    }
+  } catch (err) { /* status line is optional; the cards still work without it */ }
+}
+
+async function handleWhatsAppFile(e) {
+  const file = e.target.files[0];
+  const pickRow = document.getElementById("waPickRow");
+  const hint = document.getElementById("waPickHint");
+  pickRow.style.display = "none";
+  hint.style.display = "none";
+  document.getElementById("waResult").style.display = "none";
+  waFileText = null;
+  if (!file) return;
+
+  if (file.size > WA_MAX_BYTES) {
+    showConnectBanner("waResult", "That file is too large (limit ~3 MB). Export without media, or a shorter date range.", "none");
+    return;
+  }
+  if (/\.zip$/i.test(file.name)) {
+    showConnectBanner("waResult", "That's a .zip — unzip it and choose the _chat.txt / .txt file inside.", "none");
+    return;
+  }
+
+  try {
+    waFileText = await file.text();
+    const nameMatch = file.name.match(/WhatsApp Chat (?:with|-) (.+?)(?:\.txt)?$/i);
+    waChatName = nameMatch ? nameMatch[1].trim() : null;
+
+    const info = await inspectWhatsApp(waFileText);
+    const select = document.getElementById("waMyName");
+    select.innerHTML = info.participants
+      .map((p) => `<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.message_count})</option>`)
+      .join("");
+    hint.textContent = `Found ${info.total_messages} messages. Choose which person is you.`;
+    hint.style.display = "block";
+    pickRow.style.display = "flex";
+  } catch (err) {
+    waFileText = null;
+    showConnectBanner("waResult", err.message, "none");
+  }
+}
+
+async function handleWhatsAppImport() {
+  if (!waFileText) return;
+  const btn = document.getElementById("waImportBtn");
+  btn.disabled = true;
+  btn.textContent = "Importing...";
+  document.getElementById("waResult").style.display = "none";
+  document.getElementById("waItems").innerHTML = "";
+  try {
+    const summary = await importWhatsApp({
+      text: waFileText,
+      myName: document.getElementById("waMyName").value,
+      chatName: waChatName,
+      maxMessages: Number(document.getElementById("waMax").value),
+    });
+    showConnectBanner("waResult", ingestSummaryText(summary),
+      summary.commitments_created || summary.commitments_resolved ? "extracted" : "none");
+    renderIngestItems("waItems", summary.items);
+    await refreshAfterIngest();
+  } catch (err) {
+    showConnectBanner("waResult", err.message, "none");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Import";
+  }
+}
+
+async function handleGmailSync() {
+  const address = document.getElementById("gmAddress").value.trim();
+  const passwordInput = document.getElementById("gmAppPassword");
+  if (!address || !passwordInput.value) {
+    showConnectBanner("gmResult", "Enter your Gmail address and an app password.", "none");
+    return;
+  }
+  const btn = document.getElementById("gmSyncBtn");
+  btn.disabled = true;
+  btn.textContent = "Syncing...";
+  document.getElementById("gmResult").style.display = "none";
+  document.getElementById("gmItems").innerHTML = "";
+  try {
+    const summary = await syncGmail({
+      address,
+      appPassword: passwordInput.value,
+      days: Number(document.getElementById("gmDays").value),
+    });
+    passwordInput.value = ""; // never keep the secret in the page after use
+    showConnectBanner("gmResult", ingestSummaryText(summary),
+      summary.commitments_created || summary.commitments_resolved ? "extracted" : "none");
+    renderIngestItems("gmItems", summary.items);
+    await refreshAfterIngest();
+  } catch (err) {
+    showConnectBanner("gmResult", err.message, "none");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Sync sent mail";
+  }
+}
+
 async function handleAddContact() {
   const nameInput = document.getElementById("contactNameInput");
   const handleInput = document.getElementById("contactHandleInput");
@@ -627,6 +790,9 @@ function wireNav() {
   document.getElementById("themeToggle").addEventListener("click", toggleTheme);
   document.getElementById("submitBtn").addEventListener("click", handleSubmitMessage);
   document.getElementById("addContactBtn")?.addEventListener("click", handleAddContact);
+  document.getElementById("waFile")?.addEventListener("change", handleWhatsAppFile);
+  document.getElementById("waImportBtn")?.addEventListener("click", handleWhatsAppImport);
+  document.getElementById("gmSyncBtn")?.addEventListener("click", handleGmailSync);
   document.getElementById("settingsPersonaSaveBtn")?.addEventListener("click", handleSavePersona);
   document.getElementById("settingsLogoutBtn")?.addEventListener("click", logout);
   document.querySelectorAll(".channel-option").forEach((btn) => {
@@ -934,6 +1100,42 @@ function startReminderPolling() {
   setInterval(checkReminders, 60 * 1000);
 }
 
+// ---------- 3D tilt-on-hover ----------
+// Event-delegated (not per-element listeners) since .kanban-card and
+// .commitment-item elements are constantly re-rendered via innerHTML on
+// every fetch — attaching listeners directly to them would mean
+// re-attaching after every single re-render. One pair of document-level
+// listeners handles every current and future matching element instead.
+function attachTiltEffect() {
+  const TILT_DEGREES = 8;
+
+  document.addEventListener("mousemove", (e) => {
+    const el = e.target.closest(".card, .kanban-card");
+    // Skip entirely while a card is being dragged (kanban) — the tilt
+    // transform would fight with the drag-and-drop system's own visual
+    // state (`.dragging` sets opacity via CSS; adding a transform here
+    // too would be a confusing, unintended combination during a drag).
+    if (!el || el.classList.contains("dragging")) return;
+
+    const rect = el.getBoundingClientRect();
+    const relX = (e.clientX - rect.left) / rect.width - 0.5;
+    const relY = (e.clientY - rect.top) / rect.height - 0.5;
+
+    el.style.transform =
+      `perspective(700px) rotateX(${(-relY * TILT_DEGREES).toFixed(2)}deg) ` +
+      `rotateY(${(relX * TILT_DEGREES).toFixed(2)}deg) translateZ(4px)`;
+  });
+
+  // mouseleave doesn't bubble, but a capture-phase listener on document
+  // still receives it for every element as the event travels down to
+  // its target — this is the standard workaround for delegating a
+  // non-bubbling event type.
+  document.addEventListener("mouseleave", (e) => {
+    const el = e.target?.closest?.(".card, .kanban-card");
+    if (el) el.style.transform = "";
+  }, true);
+}
+
 async function init() {
   const authenticated = initAuthScreen();
   if (!authenticated) return; // auth screen is showing; nothing else should run yet
@@ -944,10 +1146,15 @@ async function init() {
   selectChannel("message");
   fetchContactsCache();
   startReminderPolling();
+  initThreeBackground(); // ambient 3D scene — decorative, degrades silently on failure
+  attachTiltEffect();
 
   try {
     await initAnimations();
-    fadeInStagger("[data-animate]");
+    // fadeInStagger removed here — scrollReveal3D (called per-view from
+    // switchView) is the new, scroll-triggered replacement for section
+    // entrance animation. Keeping both would double-animate the same
+    // [data-animate] elements.
   } catch (err) { console.warn("Animations failed to load:", err); }
 
   switchView("digest");

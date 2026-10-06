@@ -1025,3 +1025,52 @@ body::before {
 .settings-label { font-size: 13px; color: var(--muted); font-weight: 600; }
 .settings-value { font-size: 13.5px; color: var(--text); }
 .settings-hint { font-size: 12.5px; color: var(--muted); margin-bottom: 14px; line-height: 1.5; }
+
+/* ---------- 3D / Scroll-Based Redesign ---------- */
+
+/* The ambient Three.js scene — fixed, full-viewport, always behind
+   everything (including the existing film-grain overlay at z-index -1),
+   and pointer-events:none so it can NEVER intercept a click, drag, or
+   form interaction anywhere in the real app. */
+.three-background-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+}
+
+/* Cards get real 3D depth: a perspective context on their container plus
+   a transform-based tilt (set via JS on mousemove, cleared on
+   mouseleave) — transform-style/will-change here are what make that
+   tilt render with genuine depth instead of looking like a flat skew. */
+.card, .kanban-card, .commitment-item, .hero-banner {
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+/* The tilt itself is applied inline via JS (see js/app.js's
+   attachTiltEffect) as a per-element transform, since the exact angle
+   depends on live mouse position relative to each element — that can't
+   be expressed as a static CSS rule. This transition is what makes the
+   tilt (and its release on mouseleave) feel smooth rather than snapping. */
+.card, .kanban-card {
+  transition: transform 0.15s ease-out, box-shadow 0.2s ease;
+}
+
+/* Elements using the new scroll-reveal system start authored for a 3D
+   entrance (see animations.js's scrollReveal3D) — this baseline keeps
+   them invisible pre-reveal even before JS runs, avoiding a flash of
+   fully-visible content on slow connections before Motion loads. */
+[data-animate] {
+  backface-visibility: hidden;
+}
+
+/* Deeper, more dimensional card shadow — replaces the flatter default
+   shadow specifically where the 3D redesign is active, giving cards a
+   sense of actually floating above the 3D background rather than
+   sitting flush against a flat page. */
+.card:hover {
+  box-shadow: 0 12px 40px rgba(0,0,0,0.22), inset 0 1px 0 var(--card-highlight);
+}

@@ -153,3 +153,45 @@ export function updateMe(updates) {
     body: JSON.stringify(updates),
   });
 }
+
+
+// ---------- Message connectors (Phase 1: message reading) ----------
+// WhatsApp = the file from WhatsApp's own "Export chat"; Gmail = the user's
+// SENT mail read over IMAP with a Google app password. The app password is
+// sent for this one request only — the backend never stores it.
+
+function postJson(path, payload) {
+  return request(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export function inspectWhatsApp(text) {
+  return postJson("/connectors/whatsapp/inspect", { text });
+}
+
+export function importWhatsApp({ text, myName, chatName, maxMessages = 50 }) {
+  return postJson("/connectors/whatsapp/import", {
+    text,
+    my_name: myName,
+    chat_name: chatName || null,
+    // Export timestamps are the phone's local time with no zone attached.
+    utc_offset_minutes: -new Date().getTimezoneOffset(),
+    max_messages: maxMessages,
+  });
+}
+
+export function syncGmail({ address, appPassword, days = 14, maxMessages = 25 }) {
+  return postJson("/connectors/gmail/sync", {
+    gmail_address: address,
+    app_password: appPassword,
+    days,
+    max_messages: maxMessages,
+  });
+}
+
+export function getConnectorStatus() {
+  return request("/connectors/status");
+}
